@@ -2,20 +2,25 @@
 main.py — Demo de la Fase 1: Lexer + Parser + AST
 ==================================================
 
-Pipeline completo para seis casos de código Python con patrones de SQLi.
-Por cada caso:
-  1. Imprime los tokens en una tabla de consola (rich).
-  2. Imprime el AST como árbol jerárquico en consola (rich + Unicode).
-  3. Exporta la representación gráfica del AST como .png (Graphviz).
+Estructura de directorios
+--------------------------
+  phase1/
+  ├── samples/          ← código fuente de entrada (un .py por caso)
+  ├── output/
+  │   ├── ast/          ← un PNG por caso (AST sin leyenda)
+  │   └── legend/       ← legend.png (leyenda standalone)
+  └── *.py              ← módulos del compilador
 
-Casos incluidos
----------------
-  1  Asignación simple y llamada a función
-  2  Concatenación con input()            → SQLi clásico
-  3  F-string con request.args.get()      → SQLi moderno (Flask)
-  4  Printf-style  "%s" % val             → SQLi legacy
-  5  Función con sanitizador int()        → ruta segura
-  6  Acumulación con += dentro de if      → SQLi condicional
+Pipeline por cada archivo en samples/
+--------------------------------------
+  1. Leer el .py desde samples/
+  2. Lexer  → lista de tokens
+  3. Parser → AST (Module)
+  4. Imprimir tokens en tabla (rich)
+  5. Imprimir AST como árbol (rich + Unicode)
+  6. Exportar AST como PNG en output/ast/
+
+Al final se genera output/legend/legend.png (una sola vez).
 """
 
 import os
@@ -33,83 +38,22 @@ from ast_visualizer import ASTVisualizer
 
 con = Console()
 
-OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "output")
+# ── Rutas ─────────────────────────────────────────────────────────────────────
+BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
+SAMPLES_DIR = os.path.join(BASE_DIR, "samples")
+AST_DIR     = os.path.join(BASE_DIR, "output", "ast")
+LEGEND_DIR  = os.path.join(BASE_DIR, "output", "legend")
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Casos de prueba
-# ──────────────────────────────────────────────────────────────────────────────
-
-# slug, título consola, caption figura, fuente
-CASES: list[tuple[str, str, str, str]] = [
-    (
-        "1_asignacion_simple",
-        "1 · Asignación simple y llamada a función",
-        "Figure 1. AST for Case 1: Simple Assignment and Function Call",
-        """
-x = 42
-y = "hello"
-print(x)
-""",
-    ),
-    (
-        "2_sqli_concatenacion",
-        "2 · SQLi clásico — concatenación con input()",
-        "Figure 2. AST for Case 2: Classic SQLi via String Concatenation",
-        """
-user_id = input("ID: ")
-query = "SELECT * FROM users WHERE id = " + user_id
-cursor.execute(query)
-""",
-    ),
-    (
-        "3_sqli_fstring",
-        "3 · SQLi moderno — f-string con request.args",
-        "Figure 3. AST for Case 3: SQLi via f-string Interpolation (Flask)",
-        """
-from flask import request
-
-def get_user():
-    name = request.args.get("name")
-    query = f"SELECT * FROM users WHERE name = '{name}'"
-    cursor.execute(query)
-""",
-    ),
-    (
-        "4_sqli_printf",
-        "4 · SQLi legacy — printf-style",
-        "Figure 4. AST for Case 4: Legacy SQLi via printf-style Formatting",
-        """
-username = request.form.get("user")
-sql = "SELECT id FROM accounts WHERE login = '%s'" % username
-db.execute(sql)
-""",
-    ),
-    (
-        "5_ruta_segura",
-        "5 · Función con sanitizador int() — ruta segura",
-        "Figure 5. AST for Case 5: Safe Path with int() Sanitizer",
-        """
-import re
-
-def fetch_product(product_id):
-    safe_id = int(product_id)
-    query = "SELECT * FROM products WHERE id = " + str(safe_id)
-    cursor.execute(query)
-    return cursor.fetchone()
-""",
-    ),
-    (
-        "6_augassign_condicional",
-        "6 · SQLi condicional — acumulación con +=",
-        "Figure 6. AST for Case 6: Conditional SQLi via Augmented Assignment",
-        """
-base_query = "SELECT * FROM logs WHERE 1=1"
-if user_filter:
-    base_query += " AND user = '" + user_input + "'"
-db.execute(base_query)
-""",
-    ),
-]
+# ── Metadatos de cada caso (nombre de archivo → caption de figura) ─────────────
+# El orden en esta lista determina el orden de procesamiento.
+CASE_META: dict[str, str] = {
+    "case1_simple_assignment.py":    "Figure 1. AST for Case 1: Simple Assignment and Function Call",
+    "case2_sqli_concatenation.py":   "Figure 2. AST for Case 2: Classic SQLi via String Concatenation",
+    "case3_sqli_fstring.py":         "Figure 3. AST for Case 3: SQLi via f-string Interpolation (Flask)",
+    "case4_sqli_printf.py":          "Figure 4. AST for Case 4: Legacy SQLi via printf-style Formatting",
+    "case5_safe_sanitizer.py":       "Figure 5. AST for Case 5: Safe Path with int() Sanitizer",
+    "case6_augassign_conditional.py":"Figure 6. AST for Case 6: Conditional SQLi via Augmented Assignment",
+}
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -117,55 +61,53 @@ db.execute(base_query)
 # ──────────────────────────────────────────────────────────────────────────────
 
 def run_case(
-    slug: str,
-    title: str,
+    sample_path: str,
     caption: str,
-    source: str,
     visualizer: ASTVisualizer,
 ) -> bool:
-    """
-    Ejecuta el pipeline completo sobre un fragmento de código.
-    Retorna True si el caso se procesó sin errores.
-    """
+    filename = os.path.basename(sample_path)
+    slug     = os.path.splitext(filename)[0]
+    title    = caption.split(". ", 1)[-1]   # texto sin "Figure N."
 
-    # ── Cabecera ──────────────────────────────────────────────────────────────
     con.print()
-    con.print(Rule(f"[bold white]{title}[/bold white]", style="dim white"))
+    con.print(Rule(f"[bold white]{caption}[/bold white]", style="dim white"))
 
-    # ── Código fuente ─────────────────────────────────────────────────────────
-    con.print(Rule("[dim cyan]📄  Código fuente[/dim cyan]", style="dim white"))
-    lines = source.strip().splitlines()
-    for i, line in enumerate(lines, 1):
-        num  = Text(f"  {i:>3} │ ", style="dim white")
-        code = Text(line, style="white")
-        con.print(num + code)
+    # ── Leer fuente ───────────────────────────────────────────────────────────
+    try:
+        with open(sample_path, encoding="utf-8") as f:
+            source = f.read()
+    except OSError as exc:
+        con.print(f"  [bold red]✗ No se pudo leer {sample_path}:[/bold red] {exc}")
+        return False
+
+    con.print(Rule("[dim cyan]📄  Source — " + filename + "[/dim cyan]", style="dim white"))
+    for i, line in enumerate(source.splitlines(), 1):
+        con.print(Text(f"  {i:>3} │ ", style="dim white") + Text(line, style="white"))
     con.print()
 
-    # ── Lexer → Tokens ────────────────────────────────────────────────────────
+    # ── Lexer ─────────────────────────────────────────────────────────────────
     con.print(Rule("[dim cyan]🔤  Tokens[/dim cyan]", style="dim white"))
     try:
         tokens = list(Lexer(source).tokenize())
     except Exception as exc:
-        con.print(f"  [bold red]✗ Error léxico:[/bold red] {exc}")
+        con.print(f"  [bold red]✗ Lexer error:[/bold red] {exc}")
         return False
-
     print_token_table(tokens, con)
 
     # ── Parser → AST (consola) ────────────────────────────────────────────────
-    con.print(Rule("[dim cyan]🌳  AST — árbol[/dim cyan]", style="dim white"))
+    con.print(Rule("[dim cyan]🌳  AST[/dim cyan]", style="dim white"))
     try:
         tree = Parser(TokenStream(tokens)).parse()
     except Exception as exc:
-        con.print(f"  [bold red]✗ Error de sintaxis:[/bold red] {exc}")
+        con.print(f"  [bold red]✗ Parser error:[/bold red] {exc}")
         return False
-
     print_ast_tree(tree, con=con)
 
     node_count = _count_nodes(tree)
     con.print(
-        f"  [green]✓[/green] Parseado correctamente — "
-        f"[bold]{len(tree.body)}[/bold] sentencia(s) en el módulo, "
-        f"[bold]{node_count}[/bold] nodo(s) totales en el AST"
+        f"  [green]✓[/green] Parsed — "
+        f"[bold]{len(tree.body)}[/bold] top-level statement(s), "
+        f"[bold]{node_count}[/bold] total AST node(s)"
     )
     con.print()
 
@@ -173,18 +115,17 @@ def run_case(
     try:
         png_path = visualizer.render(tree, filename=slug, caption=caption)
         con.print(
-            f"  [green]✓[/green] Grafo PNG guardado → "
-            f"[bold cyan]{png_path}[/bold cyan]"
+            f"  [green]✓[/green] AST graph → "
+            f"[bold cyan]{os.path.relpath(png_path, BASE_DIR)}[/bold cyan]"
         )
     except Exception as exc:
-        con.print(f"  [bold red]✗ Error al generar PNG:[/bold red] {exc}")
+        con.print(f"  [bold red]✗ PNG error:[/bold red] {exc}")
         return False
 
     return True
 
 
 def _count_nodes(node) -> int:
-    """Cuenta el total de nodos ASTNode en el árbol."""
     from ast_nodes import ASTNode
     total = 1
     for v in node.__dict__.values():
@@ -205,40 +146,64 @@ def main():
     con.print()
     con.print(
         Panel(
-            "[bold cyan]SECURITY LINTER — FASE 1[/bold cyan]\n"
-            "[dim white]Lexer  ·  Parser  ·  AST  (subconjunto Python)[/dim white]",
+            "[bold cyan]SECURITY LINTER — PHASE 1[/bold cyan]\n"
+            "[dim white]Lexer  ·  Parser  ·  AST  (Python subset)[/dim white]\n\n"
+            f"[dim white]samples/[/dim white]  [white]→[/white]  "
+            f"[dim white]output/ast/   output/legend/[/dim white]",
             border_style="cyan",
             expand=False,
-            padding=(1, 6),
+            padding=(1, 4),
         )
     )
 
-    visualizer = ASTVisualizer(output_dir=OUTPUT_DIR, dpi=150, rankdir="TB")
+    # Validar que exista la carpeta de samples
+    if not os.path.isdir(SAMPLES_DIR):
+        con.print(f"[bold red]✗ samples/ directory not found at {SAMPLES_DIR}[/bold red]")
+        sys.exit(1)
 
+    visualizer = ASTVisualizer(output_dir=AST_DIR, dpi=200, rankdir="TB")
+
+    # Procesar solo los archivos listados en CASE_META (en orden)
     results: list[tuple[str, bool]] = []
-    for slug, title, caption, source in CASES:
-        ok = run_case(slug, title, caption, source, visualizer)
-        results.append((title, ok))
+    for filename, caption in CASE_META.items():
+        path = os.path.join(SAMPLES_DIR, filename)
+        if not os.path.isfile(path):
+            con.print(f"  [yellow]⚠ Skipping missing file: {filename}[/yellow]")
+            results.append((caption, False))
+            continue
+        ok = run_case(path, caption, visualizer)
+        results.append((caption, ok))
 
-    # ── Resumen final ─────────────────────────────────────────────────────────
+    # ── Leyenda standalone ────────────────────────────────────────────────────
     con.print()
-    con.print(Rule("[bold white]Resumen[/bold white]", style="dim white"))
+    con.print(Rule("[dim cyan]📐  Legend[/dim cyan]", style="dim white"))
+    try:
+        leg_path = ASTVisualizer.render_legend(output_dir=LEGEND_DIR, dpi=200)
+        con.print(
+            f"  [green]✓[/green] Legend PNG → "
+            f"[bold cyan]{os.path.relpath(leg_path, BASE_DIR)}[/bold cyan]"
+        )
+    except Exception as exc:
+        con.print(f"  [bold red]✗ Legend error:[/bold red] {exc}")
+
+    # ── Resumen ───────────────────────────────────────────────────────────────
+    con.print()
+    con.print(Rule("[bold white]Summary[/bold white]", style="dim white"))
     ok_count = sum(1 for _, ok in results if ok)
-    for title, ok in results:
+    for caption, ok in results:
         icon  = "[green]✓[/green]" if ok else "[red]✗[/red]"
+        label = caption.split(". ", 1)[-1]
         style = "white" if ok else "red"
-        con.print(f"  {icon}  [{style}]{title}[/{style}]")
+        con.print(f"  {icon}  [{style}]{label}[/{style}]")
 
     con.print()
     con.print(
-        f"  [bold]{ok_count}/{len(results)}[/bold] casos procesados correctamente. "
-        f"PNGs guardados en [bold cyan]{os.path.abspath(OUTPUT_DIR)}[/bold cyan]"
+        f"  [bold]{ok_count}/{len(results)}[/bold] cases processed. "
+        f"PNGs → [bold cyan]{os.path.relpath(AST_DIR, BASE_DIR)}/[/bold cyan]  "
+        f"Legend → [bold cyan]{os.path.relpath(LEGEND_DIR, BASE_DIR)}/[/bold cyan]"
     )
     con.print()
-    con.print(
-        "  [dim]Siguiente fase: CFG Builder · DFG Builder · "
-        "Taint Propagation Engine[/dim]"
-    )
+    con.print("  [dim]Next phase: CFG Builder · DFG Builder · Taint Propagation Engine[/dim]")
     con.print()
 
     sys.exit(0 if ok_count == len(results) else 1)
