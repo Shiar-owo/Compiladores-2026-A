@@ -2,42 +2,70 @@
 main.py — Demo de la Fase 1: Lexer + Parser + AST
 ==================================================
 
-Ejecuta el frontend del compilador sobre cinco casos representativos:
-  1. Asignación simple y llamada a función
-  2. Concatenación directa de input() → SQLi clásico
-  3. F-string con datos de usuario → SQLi moderno
-  4. Printf-style ("%s" % val) → SQLi legacy
-  5. Código con función, if y return (análisis interprocedural futuro)
+Pipeline completo para seis casos de código Python con patrones de SQLi.
+Por cada caso:
+  1. Imprime los tokens en una tabla de consola (rich).
+  2. Imprime el AST como árbol jerárquico en consola (rich + Unicode).
+  3. Exporta la representación gráfica del AST como .png (Graphviz).
 
-Para cada caso muestra:
-  - Los tokens producidos por el Lexer
-  - El AST producido por el Parser (representación en árbol)
+Casos incluidos
+---------------
+  1  Asignación simple y llamada a función
+  2  Concatenación con input()            → SQLi clásico
+  3  F-string con request.args.get()      → SQLi moderno (Flask)
+  4  Printf-style  "%s" % val             → SQLi legacy
+  5  Función con sanitizador int()        → ruta segura
+  6  Acumulación con += dentro de if      → SQLi condicional
 """
 
-import textwrap
-from lexer  import Lexer, TokenStream
-from parser import Parser
+import os
+import sys
 
+from rich.console import Console
+from rich.panel   import Panel
+from rich.rule    import Rule
+from rich.text    import Text
+
+from lexer          import Lexer, TokenStream
+from parser         import Parser
+from ast_printer    import print_ast_tree, print_token_table
+from ast_visualizer import ASTVisualizer
+
+con = Console()
+
+OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "output")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Casos de prueba
 # ──────────────────────────────────────────────────────────────────────────────
 
-CASES = {
-
-    "1 · Asignación y llamada simple": """
+# slug, título consola, caption figura, fuente
+CASES: list[tuple[str, str, str, str]] = [
+    (
+        "1_asignacion_simple",
+        "1 · Asignación simple y llamada a función",
+        "Figure 1. AST for Case 1: Simple Assignment and Function Call",
+        """
 x = 42
 y = "hello"
 print(x)
 """,
-
-    "2 · SQLi clásico — concatenación con input()": """
+    ),
+    (
+        "2_sqli_concatenacion",
+        "2 · SQLi clásico — concatenación con input()",
+        "Figure 2. AST for Case 2: Classic SQLi via String Concatenation",
+        """
 user_id = input("ID: ")
 query = "SELECT * FROM users WHERE id = " + user_id
 cursor.execute(query)
 """,
-
-    "3 · SQLi moderno — f-string": """
+    ),
+    (
+        "3_sqli_fstring",
+        "3 · SQLi moderno — f-string con request.args",
+        "Figure 3. AST for Case 3: SQLi via f-string Interpolation (Flask)",
+        """
 from flask import request
 
 def get_user():
@@ -45,14 +73,22 @@ def get_user():
     query = f"SELECT * FROM users WHERE name = '{name}'"
     cursor.execute(query)
 """,
-
-    "4 · SQLi legacy — printf-style": """
+    ),
+    (
+        "4_sqli_printf",
+        "4 · SQLi legacy — printf-style",
+        "Figure 4. AST for Case 4: Legacy SQLi via printf-style Formatting",
+        """
 username = request.form.get("user")
 sql = "SELECT id FROM accounts WHERE login = '%s'" % username
 db.execute(sql)
 """,
-
-    "5 · Función con sanitizador (ruta segura)": """
+    ),
+    (
+        "5_ruta_segura",
+        "5 · Función con sanitizador int() — ruta segura",
+        "Figure 5. AST for Case 5: Safe Path with int() Sanitizer",
+        """
 import re
 
 def fetch_product(product_id):
@@ -61,113 +97,151 @@ def fetch_product(product_id):
     cursor.execute(query)
     return cursor.fetchone()
 """,
-
-    "6 · Acumulación con +=": """
+    ),
+    (
+        "6_augassign_condicional",
+        "6 · SQLi condicional — acumulación con +=",
+        "Figure 6. AST for Case 6: Conditional SQLi via Augmented Assignment",
+        """
 base_query = "SELECT * FROM logs WHERE 1=1"
 if user_filter:
     base_query += " AND user = '" + user_input + "'"
 db.execute(base_query)
 """,
-
-}
+    ),
+]
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Impresor de AST (visitante de representación textual)
+# Runner de un caso
 # ──────────────────────────────────────────────────────────────────────────────
 
-def print_ast(node, indent: int = 0, label: str = ""):
+def run_case(
+    slug: str,
+    title: str,
+    caption: str,
+    source: str,
+    visualizer: ASTVisualizer,
+) -> bool:
     """
-    Imprime el AST de forma recursiva mostrando tipo de nodo,
-    atributos escalares y posición en el fuente.
+    Ejecuta el pipeline completo sobre un fragmento de código.
+    Retorna True si el caso se procesó sin errores.
     """
+
+    # ── Cabecera ──────────────────────────────────────────────────────────────
+    con.print()
+    con.print(Rule(f"[bold white]{title}[/bold white]", style="dim white"))
+
+    # ── Código fuente ─────────────────────────────────────────────────────────
+    con.print(Rule("[dim cyan]📄  Código fuente[/dim cyan]", style="dim white"))
+    lines = source.strip().splitlines()
+    for i, line in enumerate(lines, 1):
+        num  = Text(f"  {i:>3} │ ", style="dim white")
+        code = Text(line, style="white")
+        con.print(num + code)
+    con.print()
+
+    # ── Lexer → Tokens ────────────────────────────────────────────────────────
+    con.print(Rule("[dim cyan]🔤  Tokens[/dim cyan]", style="dim white"))
+    try:
+        tokens = list(Lexer(source).tokenize())
+    except Exception as exc:
+        con.print(f"  [bold red]✗ Error léxico:[/bold red] {exc}")
+        return False
+
+    print_token_table(tokens, con)
+
+    # ── Parser → AST (consola) ────────────────────────────────────────────────
+    con.print(Rule("[dim cyan]🌳  AST — árbol[/dim cyan]", style="dim white"))
+    try:
+        tree = Parser(TokenStream(tokens)).parse()
+    except Exception as exc:
+        con.print(f"  [bold red]✗ Error de sintaxis:[/bold red] {exc}")
+        return False
+
+    print_ast_tree(tree, con=con)
+
+    node_count = _count_nodes(tree)
+    con.print(
+        f"  [green]✓[/green] Parseado correctamente — "
+        f"[bold]{len(tree.body)}[/bold] sentencia(s) en el módulo, "
+        f"[bold]{node_count}[/bold] nodo(s) totales en el AST"
+    )
+    con.print()
+
+    # ── AST → PNG ─────────────────────────────────────────────────────────────
+    try:
+        png_path = visualizer.render(tree, filename=slug, caption=caption)
+        con.print(
+            f"  [green]✓[/green] Grafo PNG guardado → "
+            f"[bold cyan]{png_path}[/bold cyan]"
+        )
+    except Exception as exc:
+        con.print(f"  [bold red]✗ Error al generar PNG:[/bold red] {exc}")
+        return False
+
+    return True
+
+
+def _count_nodes(node) -> int:
+    """Cuenta el total de nodos ASTNode en el árbol."""
     from ast_nodes import ASTNode
-
-    prefix = "  " * indent
-    name   = type(node).__name__
-
-    # Atributos escalares relevantes (no hijos ASTNode ni listas)
-    scalars = {}
-    for k, v in node.__dict__.items():
-        if k in ("line", "col"):
-            continue
+    total = 1
+    for v in node.__dict__.values():
         if isinstance(v, ASTNode):
-            continue
-        if isinstance(v, list) and all(isinstance(i, ASTNode) for i in v):
-            continue
-        if v is not None and v != [] and v != "":
-            scalars[k] = v
-
-    scalar_str = "  ".join(f"{k}={v!r}" for k, v in scalars.items())
-    loc_str    = f"  [{node.line}:{node.col}]"
-    lbl        = f"{label}: " if label else ""
-
-    print(f"{prefix}{lbl}\033[1;36m{name}\033[0m  {scalar_str}{loc_str}")
-
-    # Hijos
-    for k, v in node.__dict__.items():
-        if k in ("line", "col"):
-            continue
-        if isinstance(v, ASTNode):
-            print_ast(v, indent + 1, label=k)
+            total += _count_nodes(v)
         elif isinstance(v, list):
-            for i, item in enumerate(v):
+            for item in v:
                 if isinstance(item, ASTNode):
-                    print_ast(item, indent + 1, label=f"{k}[{i}]")
+                    total += _count_nodes(item)
+    return total
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Runner
+# Punto de entrada
 # ──────────────────────────────────────────────────────────────────────────────
-
-def run_case(title: str, source: str):
-    print("\n" + "═" * 72)
-    print(f"  CASO: {title}")
-    print("═" * 72)
-
-    # ── Código fuente ────────────────────────────────────────────────────────
-    print("\n📄  FUENTE:")
-    for i, line in enumerate(source.strip().splitlines(), 1):
-        print(f"  {i:>3} │ {line}")
-
-    # ── Lexer ────────────────────────────────────────────────────────────────
-    print("\n🔤  TOKENS:")
-    try:
-        lexer  = Lexer(source)
-        tokens = list(lexer.tokenize())
-    except Exception as e:
-        print(f"  ✗ Error léxico: {e}")
-        return
-
-    for tok in tokens:
-        print(f"  {tok.type.name:<22} {tok.value!r:<30} línea {tok.line}")
-
-    # ── Parser → AST ─────────────────────────────────────────────────────────
-    print("\n🌳  AST:")
-    try:
-        stream = TokenStream(tokens)
-        tree   = Parser(stream).parse()
-        print_ast(tree)
-    except Exception as e:
-        print(f"  ✗ Error de análisis: {e}")
-        return
-
-    print(f"\n  ✓ Parseado correctamente — {len(tree.body)} nodo(s) en el cuerpo del módulo")
-
 
 def main():
-    print("\n" + "╔" + "═" * 70 + "╗")
-    print("║" + " " * 18 + "SECURITY LINTER — FASE 1" + " " * 28 + "║")
-    print("║" + " " * 14 + "Lexer + Parser + AST  (Python subset)" + " " * 19 + "║")
-    print("╚" + "═" * 70 + "╝")
+    con.print()
+    con.print(
+        Panel(
+            "[bold cyan]SECURITY LINTER — FASE 1[/bold cyan]\n"
+            "[dim white]Lexer  ·  Parser  ·  AST  (subconjunto Python)[/dim white]",
+            border_style="cyan",
+            expand=False,
+            padding=(1, 6),
+        )
+    )
 
-    for title, source in CASES.items():
-        run_case(title, source)
+    visualizer = ASTVisualizer(output_dir=OUTPUT_DIR, dpi=150, rankdir="TB")
 
-    print("\n\n" + "═" * 72)
-    print("  Fase 1 completada. El AST está listo para las fases 2 y 3.")
-    print("  Próximo: CFG Builder + DFG Builder + Taint Propagation Engine")
-    print("═" * 72 + "\n")
+    results: list[tuple[str, bool]] = []
+    for slug, title, caption, source in CASES:
+        ok = run_case(slug, title, caption, source, visualizer)
+        results.append((title, ok))
+
+    # ── Resumen final ─────────────────────────────────────────────────────────
+    con.print()
+    con.print(Rule("[bold white]Resumen[/bold white]", style="dim white"))
+    ok_count = sum(1 for _, ok in results if ok)
+    for title, ok in results:
+        icon  = "[green]✓[/green]" if ok else "[red]✗[/red]"
+        style = "white" if ok else "red"
+        con.print(f"  {icon}  [{style}]{title}[/{style}]")
+
+    con.print()
+    con.print(
+        f"  [bold]{ok_count}/{len(results)}[/bold] casos procesados correctamente. "
+        f"PNGs guardados en [bold cyan]{os.path.abspath(OUTPUT_DIR)}[/bold cyan]"
+    )
+    con.print()
+    con.print(
+        "  [dim]Siguiente fase: CFG Builder · DFG Builder · "
+        "Taint Propagation Engine[/dim]"
+    )
+    con.print()
+
+    sys.exit(0 if ok_count == len(results) else 1)
 
 
 if __name__ == "__main__":

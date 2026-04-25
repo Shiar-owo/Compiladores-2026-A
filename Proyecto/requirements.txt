@@ -2,3 +2,4 @@ astpretty
 graphviz
 ipython
 astviz
+rich
