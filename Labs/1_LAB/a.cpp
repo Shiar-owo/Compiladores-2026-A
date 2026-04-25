@@ -6,7 +6,7 @@ using namespace std;
 int main() {
     string linea;
 
-    cout << "Ingrese una instruccion: ";
+    cout << "Ingresar instruccion: ";
     getline(cin, linea);
 
     cout << "Letra por letra:" << endl;
