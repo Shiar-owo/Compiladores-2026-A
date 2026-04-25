@@ -2,28 +2,33 @@
 ast_visualizer.py — Generador de PNG formal estilo paper científico
 ====================================================================
 
-Produce grafos del AST en blanco y negro con tipografía y estilo
-apropiados para su inclusión en un artículo académico o tesis.
+Estrategia de distinción visual (sin color, apto para impresión B/N)
+----------------------------------------------------------------------
+Cada categoría semántica combina TRES señales independientes para
+garantizar distinción incluso en fotocopia o daltonismo total:
 
-Convenciones visuales
----------------------
-  Categoría                   Relleno    Borde       Forma
-  ────────────────────────── ─────────  ──────────  ──────────
-  Module (raíz)              #e8e8e8    2.5pt        box
-  Sentencias estructurales   #f2f2f2    1.8pt        box
-  Sentencias simples         #ffffff    1.2pt        box
-  FCall / Attribute          #ffffff    1.8pt doble  box
-  JoinedStr / PercentFormat  #ececec    1.5pt        box
-  Variables (Name)           #ffffff    1.0pt        box
-  Expresiones                #ffffff    0.8pt        box
-  Literales                  #f5f5f5    0.8pt        ellipse
+  1. FORMA del nodo          (box, diamond, hexagon, parallelogram, ellipse…)
+  2. TONO de relleno         (de negro #111 hasta blanco #fff, escala clara)
+  3. GROSOR + ESTILO de borde (sólido fino, sólido grueso, doble, dashed)
 
-La leyenda se genera como un PNG independiente mediante render_legend().
+Tabla de categorías
+───────────────────────────────────────────────────────────────────────
+  #  Categoría              Forma          Relleno   Borde         Texto
+  ── ─────────────────────  ─────────────  ────────  ────────────  ─────
+  1  Module (root)          rectangle      #1a1a1a   solid 3.0pt   white
+  2  Structural stmts       rectangle      #555555   solid 2.0pt   white
+  3  Simple stmts           rectangle      #aaaaaa   solid 1.2pt   black
+  4  FCall / Sink           doubleoctagon  #ffffff   solid 2.5pt   black
+  5  Attribute / Subscript  rectangle      #dddddd   dashed 1.5pt  black
+  6  String format          diamond        #888888   solid 1.5pt   white
+  7  Name (identifier)      ellipse        #ffffff   solid 1.0pt   black
+  8  Expressions            rectangle      #eeeeee   dotted 1.0pt  black
+  9  Literal                ellipse        #cccccc   solid 0.8pt   black
 
-Salidas
--------
-  output/ast/   → un PNG por caso  (sin leyenda incorporada)
-  output/legend/ → legend.png       (leyenda standalone)
+Cada nodo muestra:
+  ── TIPO_NODO ──          Times New Roman 11pt bold
+  campo  valor             Times New Roman 9pt / Courier 9pt
+  [línea:col]              Times New Roman 8pt italic
 """
 
 from __future__ import annotations
@@ -37,44 +42,63 @@ from ast_nodes import ASTNode
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Esquema visual formal (escala de grises)
+# Esquema visual  (fill, penwidth, style, peripheries, shape, fontcolor, header_bg)
 # ──────────────────────────────────────────────────────────────────────────────
 
-# (fillcolor, penwidth, peripheries, shape)
-_STYLE: dict[str, tuple[str, str, str, str]] = {
-    "Module":              ("#e8e8e8", "2.5", "1", "box"),
-    "FunctionDef":         ("#f2f2f2", "1.8", "1", "box"),
-    "IfStatement":         ("#f2f2f2", "1.8", "1", "box"),
-    "ElifClause":          ("#f5f5f5", "1.2", "1", "box"),
-    "WhileStatement":      ("#f2f2f2", "1.8", "1", "box"),
-    "ForStatement":        ("#f2f2f2", "1.8", "1", "box"),
-    "AssignStatement":     ("#ffffff", "1.2", "1", "box"),
-    "AugAssignStatement":  ("#ffffff", "1.2", "1", "box"),
-    "ExprStatement":       ("#ffffff", "1.0", "1", "box"),
-    "ReturnStatement":     ("#ffffff", "1.0", "1", "box"),
-    "ImportStatement":     ("#ffffff", "1.0", "1", "box"),
-    "Param":               ("#ffffff", "0.8", "1", "box"),
-    "FCall":               ("#ffffff", "1.8", "2", "box"),   # doble borde
-    "Attribute":           ("#f8f8f8", "1.5", "2", "box"),   # doble borde
-    "Subscript":           ("#f8f8f8", "1.5", "2", "box"),   # doble borde
-    "JoinedStr":           ("#ececec", "1.5", "1", "box"),
-    "FormattedValue":      ("#f0f0f0", "1.2", "1", "box"),
-    "PercentFormat":       ("#ececec", "1.5", "1", "box"),
-    "Name":                ("#ffffff", "1.0", "1", "box"),
-    "BinaryOp":            ("#ffffff", "0.8", "1", "box"),
-    "UnaryOp":             ("#ffffff", "0.8", "1", "box"),
-    "BoolOp":              ("#ffffff", "0.8", "1", "box"),
-    "Compare":             ("#ffffff", "0.8", "1", "box"),
-    "Keyword":             ("#ffffff", "0.8", "1", "box"),
-    "Tuple":               ("#fafafa", "0.8", "1", "box"),
-    "PyList":              ("#fafafa", "0.8", "1", "box"),
-    "Literal":             ("#f5f5f5", "0.8", "1", "ellipse"),
+_S = dict[str, tuple]
+
+# (fillcolor, penwidth, border_style, peripheries, shape, fontcolor, header_bg)
+_STYLE: _S = {
+    # 1 ── Module — negro sólido, texto blanco
+    "Module":              ("#1a1a1a", "3.0", "solid",  "1", "rectangle",     "white",  "#000000"),
+
+    # 2 ── Sentencias estructurales — gris oscuro, texto blanco
+    "FunctionDef":         ("#4a4a4a", "2.0", "solid",  "1", "rectangle",     "white",  "#333333"),
+    "IfStatement":         ("#4a4a4a", "2.0", "solid",  "1", "rectangle",     "white",  "#333333"),
+    "ElifClause":          ("#666666", "1.5", "solid",  "1", "rectangle",     "white",  "#444444"),
+    "WhileStatement":      ("#4a4a4a", "2.0", "solid",  "1", "rectangle",     "white",  "#333333"),
+    "ForStatement":        ("#4a4a4a", "2.0", "solid",  "1", "rectangle",     "white",  "#333333"),
+
+    # 3 ── Sentencias simples — gris medio, texto negro
+    "AssignStatement":     ("#aaaaaa", "1.2", "solid",  "1", "rectangle",     "black",  "#888888"),
+    "AugAssignStatement":  ("#aaaaaa", "1.2", "solid",  "1", "rectangle",     "black",  "#888888"),
+    "ExprStatement":       ("#bbbbbb", "1.0", "solid",  "1", "rectangle",     "black",  "#999999"),
+    "ReturnStatement":     ("#bbbbbb", "1.0", "solid",  "1", "rectangle",     "black",  "#999999"),
+    "ImportStatement":     ("#bbbbbb", "1.0", "solid",  "1", "rectangle",     "black",  "#999999"),
+    "Param":               ("#cccccc", "0.8", "solid",  "1", "rectangle",     "black",  "#aaaaaa"),
+
+    # 4 ── FCall / Sink — doble borde octagonal, blanco puro (MÁS LLAMATIVO)
+    "FCall":               ("#ffffff", "2.5", "solid",  "2", "octagon",       "black",  "#dddddd"),
+    "Subscript":           ("#f0f0f0", "2.0", "solid",  "2", "octagon",       "black",  "#d0d0d0"),
+
+    # 5 ── Attribute — borde dashed, gris muy claro
+    "Attribute":           ("#e8e8e8", "1.8", "dashed", "1", "rectangle",     "black",  "#cccccc"),
+
+    # 6 ── String format — diamante, gris medio-oscuro, texto blanco
+    "JoinedStr":           ("#777777", "1.8", "solid",  "1", "diamond",       "white",  "#555555"),
+    "FormattedValue":      ("#999999", "1.2", "solid",  "1", "diamond",       "white",  "#777777"),
+    "PercentFormat":       ("#777777", "1.8", "solid",  "1", "diamond",       "white",  "#555555"),
+
+    # 7 ── Name (variable) — elipse, blanco, borde sólido fino
+    "Name":                ("#ffffff", "1.2", "solid",  "1", "ellipse",       "black",  "#dddddd"),
+
+    # 8 ── Expresiones — borde punteado, gris muy claro
+    "BinaryOp":            ("#eeeeee", "1.0", "dotted", "1", "rectangle",     "black",  "#d8d8d8"),
+    "UnaryOp":             ("#eeeeee", "1.0", "dotted", "1", "rectangle",     "black",  "#d8d8d8"),
+    "BoolOp":              ("#eeeeee", "1.0", "dotted", "1", "rectangle",     "black",  "#d8d8d8"),
+    "Compare":             ("#eeeeee", "1.0", "dotted", "1", "rectangle",     "black",  "#d8d8d8"),
+    "Keyword":             ("#eeeeee", "0.8", "dotted", "1", "rectangle",     "black",  "#d8d8d8"),
+    "Tuple":               ("#f4f4f4", "0.8", "dotted", "1", "rectangle",     "black",  "#e0e0e0"),
+    "PyList":              ("#f4f4f4", "0.8", "dotted", "1", "rectangle",     "black",  "#e0e0e0"),
+
+    # 9 ── Literal — elipse gris claro, borde sólido fino
+    "Literal":             ("#cccccc", "0.8", "solid",  "1", "ellipse",       "black",  "#b0b0b0"),
 }
 
-_DEFAULT_STYLE = ("#ffffff", "0.8", "1", "box")
+_DEFAULT_STYLE = ("#f8f8f8", "0.8", "solid", "1", "rectangle", "black", "#dddddd")
 
 _FONT_TITLE = "Times New Roman"
-_FONT_MONO  = "Courier"
+_FONT_MONO  = "Courier New"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -93,9 +117,9 @@ def _esc(text: str) -> str:
     )
 
 
-def _trunc(value: str, n: int = 30) -> str:
+def _trunc(value: str, n: int = 28) -> str:
     s = str(value)
-    return s if len(s) <= n else s[: n - 1] + "…"
+    return s if len(s) <= n else s[:n - 1] + "…"
 
 
 def _scalar_attrs(node: ASTNode) -> list[tuple[str, str]]:
@@ -128,49 +152,70 @@ def _children(node: ASTNode) -> list[tuple[str, ASTNode]]:
 
 
 def _make_label(node: ASTNode) -> str:
-    """Etiqueta HTML-like con cabecera sombreada, atributos y posición."""
+    """
+    Etiqueta HTML-like estructurada en tres zonas:
+      ┌─────────────────────────────┐
+      │  [HEADER BG]  TIPO_NODO     │  bold, fuente según fontcolor
+      ├─────────────────────────────┤
+      │  attr_name    attr_value    │  9pt
+      ├─────────────────────────────┤
+      │              [línea:col]    │  8pt itálica
+      └─────────────────────────────┘
+    """
     node_type = type(node).__name__
+    fill, pw, bstyle, peri, shape, fcolor, hbg = _STYLE.get(node_type, _DEFAULT_STYLE)
+
+    # Color del texto en la cabecera (contraste con header_bg)
+    hdr_font = "white" if fcolor == "white" else "black"
 
     rows = (
         f'<TR>'
-        f'<TD ALIGN="CENTER" COLSPAN="2" BGCOLOR="#dddddd">'
-        f'<B><FONT FACE="{_FONT_TITLE}" POINT-SIZE="11">{node_type}</FONT></B>'
+        f'<TD ALIGN="CENTER" COLSPAN="2" BGCOLOR="{hbg}">'
+        f'<B><FONT FACE="{_FONT_TITLE}" POINT-SIZE="11" COLOR="{hdr_font}">'
+        f'{node_type}</FONT></B>'
         f'</TD></TR>'
     )
+
     for attr_name, attr_val in _scalar_attrs(node):
         rows += (
             f'<TR>'
-            f'<TD ALIGN="LEFT">'
-            f'<FONT FACE="{_FONT_TITLE}" POINT-SIZE="9"><I>{attr_name}</I></FONT>'
+            f'<TD ALIGN="LEFT" BGCOLOR="{fill}">'
+            f'<FONT FACE="{_FONT_TITLE}" POINT-SIZE="9" COLOR="black">'
+            f'<I>{attr_name}</I></FONT>'
             f'</TD>'
-            f'<TD ALIGN="LEFT">'
-            f'<FONT FACE="{_FONT_MONO}" POINT-SIZE="9">{attr_val}</FONT>'
+            f'<TD ALIGN="LEFT" BGCOLOR="{fill}">'
+            f'<FONT FACE="{_FONT_MONO}" POINT-SIZE="9" COLOR="black">'
+            f'{attr_val}</FONT>'
             f'</TD></TR>'
         )
+
     rows += (
         f'<TR>'
-        f'<TD COLSPAN="2" ALIGN="RIGHT">'
-        f'<FONT FACE="{_FONT_TITLE}" POINT-SIZE="8"><I>[{node.line}:{node.col}]</I></FONT>'
+        f'<TD COLSPAN="2" ALIGN="RIGHT" BGCOLOR="{fill}">'
+        f'<FONT FACE="{_FONT_TITLE}" POINT-SIZE="8" COLOR="#444444">'
+        f'<I>[{node.line}:{node.col}]</I></FONT>'
         f'</TD></TR>'
     )
+
     return (
-        f'<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="1" '
-        f'CELLPADDING="3">{rows}</TABLE>>'
+        f'<<TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" '
+        f'CELLPADDING="4" COLOR="#888888">{rows}</TABLE>>'
     )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Visualizador principal
+# Visualizador
 # ──────────────────────────────────────────────────────────────────────────────
 
 class ASTVisualizer:
     """
-    Genera PNGs del AST en estilo paper científico.
+    Genera PNGs del AST en estilo paper científico B/N con alta distinción
+    visual entre categorías de nodos.
 
     Métodos públicos
     ----------------
-    render(root, filename, caption)  → PNG del AST sin leyenda
-    render_legend(output_dir)        → PNG de leyenda standalone
+    render(root, filename, caption)  → PNG del AST (sin leyenda)
+    render_legend(output_dir, dpi)   → legend.png standalone
     """
 
     def __init__(
@@ -188,202 +233,329 @@ class ASTVisualizer:
     # ── Render del AST ────────────────────────────────────────────────────────
 
     def render(self, root: ASTNode, filename: str, caption: str = "") -> str:
-        """
-        Genera el PNG del AST para un nodo raíz dado.
-
-        Parámetros
-        ----------
-        root     : Module node del parser
-        filename : nombre base del archivo de salida (sin extensión)
-        caption  : texto de pie de figura, p.ej. "Figure 2. AST for Case 2"
-
-        Retorna la ruta absoluta del .png generado.
-        """
         self._uid = 0
         g = graphviz.Digraph(name=filename, comment=f"AST — {filename}")
         self._configure_graph(g, caption)
         self._visit(g, root, parent_id=None, edge_label="")
-
         out_base = os.path.join(self.output_dir, filename)
         g.render(out_base, format="png", cleanup=True, quiet=True)
         return os.path.abspath(out_base + ".png")
 
-    # ── Render de la leyenda standalone ──────────────────────────────────────
+    # ── Leyenda standalone ────────────────────────────────────────────────────
 
     @staticmethod
     def render_legend(output_dir: str = "output/legend", dpi: int = 200) -> str:
         """
-        Genera un PNG independiente con la leyenda completa del esquema visual.
-        No requiere un AST; puede invocarse una sola vez por ejecución.
+        Genera legend.png con una tabla formal de doble columna:
+          columna izquierda  → nodo de ejemplo (forma + relleno + borde reales)
+          columna derecha    → descripción tipográfica estructurada
 
-        Parámetros
-        ----------
-        output_dir : directorio donde se guardará legend.png
-        dpi        : resolución de salida
-
-        Retorna la ruta absoluta del legend.png generado.
+        Layout: rankdir=TB con subgrafos de rank=same para alinear columnas.
         """
         os.makedirs(output_dir, exist_ok=True)
 
-        g = graphviz.Digraph(name="legend", comment="AST Visualizer — Legend")
+        g = graphviz.Digraph(name="legend", comment="AST Legend")
         g.attr(
-            rankdir   = "LR",
+            rankdir   = "TB",
             bgcolor   = "white",
             fontname  = _FONT_TITLE,
-            fontsize  = "11",
-            splines   = "ortho",
-            nodesep   = "0.35",
-            ranksep   = "0.80",
-            pad       = "0.6",
+            splines   = "line",
+            nodesep   = "0.5",
+            ranksep   = "0.45",
+            pad       = "0.7",
             dpi       = str(dpi),
-            label     = (
-                f'<<B><FONT FACE="{_FONT_TITLE}" POINT-SIZE="13">'
-                f'Figure A. Node Classification Legend for AST Diagrams'
-                f'</FONT></B>>'
-            ),
-            labelloc  = "t",
-            labeljust = "c",
         )
         g.attr("node",
             fontname  = _FONT_TITLE,
             fontsize  = "10",
-            fontcolor = "black",
             color     = "black",
             style     = "filled",
-            margin    = "0.14,0.08",
+            margin    = "0.12,0.08",
         )
         g.attr("edge",
             color     = "black",
-            fontname  = _FONT_TITLE,
-            fontsize  = "9",
-            arrowhead = "normal",
-            arrowsize = "0.6",
-            penwidth  = "0.8",
+            arrowhead = "none",
+            penwidth  = "0.6",
         )
 
-        # ── Cada entrada: nodo de ejemplo + nodo de descripción ───────────────
+        # ── Título formal ──────────────────────────────────────────────────────
+        g.node("title",
+            label = (
+                f'<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="6">'
+                f'<TR><TD>'
+                f'<B><FONT FACE="{_FONT_TITLE}" POINT-SIZE="14">'
+                f'Figure A. Node Classification Legend</FONT></B>'
+                f'</TD></TR>'
+                f'<TR><TD>'
+                f'<FONT FACE="{_FONT_TITLE}" POINT-SIZE="10">'
+                f'<I>Abstract Syntax Tree — Security Linter, Phase 1</I>'
+                f'</FONT>'
+                f'</TD></TR>'
+                f'</TABLE>>'
+            ),
+            shape     = "plaintext",
+            fillcolor = "white",
+            penwidth  = "0",
+        )
+
+        # ── Separador horizontal ───────────────────────────────────────────────
+        g.node("sep",
+            label    = (
+                f'<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="2">'
+                f'<TR><TD WIDTH="600" HEIGHT="1" BGCOLOR="#333333"></TD></TR>'
+                f'</TABLE>>'
+            ),
+            shape    = "plaintext",
+            fillcolor= "white",
+            penwidth = "0",
+        )
+        g.edge("title", "sep", style="invis")
+
+        # ── Cabecera de columnas ───────────────────────────────────────────────
+        g.node("col_hdr_node",
+            label = (
+                f'<<B><FONT FACE="{_FONT_TITLE}" POINT-SIZE="10">'
+                f'Node Example</FONT></B>>'
+            ),
+            shape="plaintext", fillcolor="white", penwidth="0",
+        )
+        g.node("col_hdr_desc",
+            label = (
+                f'<<B><FONT FACE="{_FONT_TITLE}" POINT-SIZE="10">'
+                f'Classification &amp; Description</FONT></B>>'
+            ),
+            shape="plaintext", fillcolor="white", penwidth="0",
+        )
+        with g.subgraph() as s:
+            s.attr(rank="same")
+            s.node("col_hdr_node")
+            s.node("col_hdr_desc")
+        g.edge("sep", "col_hdr_node", style="invis")
+        g.edge("sep", "col_hdr_desc", style="invis")
+        g.edge("col_hdr_node", "col_hdr_desc",
+               style="invis", minlen="2")
+
+        # ── Entradas de la leyenda ─────────────────────────────────────────────
         entries = [
-            # (id, fill, penwidth, peripheries, shape, type_label, description)
+            # (id_slug, node_types_display, fill, pw, bstyle, peri, shape, fcolor, hbg,
+            #  category_label, description_lines)
             (
                 "module",
-                "#e8e8e8", "2.5", "1", "box",
                 "Module",
-                "Root node of the program.\nThick border signals hierarchy apex.",
+                "#1a1a1a", "3.0", "solid", "1", "rectangle", "white", "#000000",
+                "Category 1 — Root",
+                ["Unique root of the program AST.",
+                 "Black fill; thick solid border (3.0 pt).",
+                 "Always a single node per translation unit."],
             ),
             (
                 "structural",
-                "#f2f2f2", "1.8", "1", "box",
-                "FunctionDef / IfStatement\nWhileStatement / ForStatement",
-                "Structural control-flow statements.\nDefine block scope boundaries.",
+                "FunctionDef  ·  IfStatement\nWhileStatement  ·  ForStatement",
+                "#4a4a4a", "2.0", "solid", "1", "rectangle", "white", "#333333",
+                "Category 2 — Structural Statements",
+                ["Block-scoping control-flow constructs.",
+                 "Dark grey fill; solid border (2.0 pt).",
+                 "Introduce new lexical scopes in the CFG."],
             ),
             (
                 "simple",
-                "#ffffff", "1.2", "1", "box",
-                "AssignStatement / AugAssignStatement\nReturnStatement / ImportStatement",
-                "Simple statements.\nNo nested block structure.",
+                "AssignStatement  ·  AugAssignStatement\nReturnStatement  ·  ImportStatement",
+                "#aaaaaa", "1.2", "solid", "1", "rectangle", "black", "#888888",
+                "Category 3 — Simple Statements",
+                ["Leaf-level executable statements.",
+                 "Medium grey fill; solid border (1.2 pt).",
+                 "Primary taint propagation targets."],
             ),
             (
-                "sink",
-                "#ffffff", "1.8", "2", "box",
-                "FCall / Attribute / Subscript",
-                "High-security-interest nodes (double border).\nPotential taint sources or SQL sinks.",
+                "fcall",
+                "FCall  ·  Subscript",
+                "#ffffff", "2.5", "solid", "2", "octagon", "black", "#dddddd",
+                "Category 4 — Calls & Subscripts  ★",
+                ["High-security-interest nodes.",
+                 "White fill; double octagon border (2.5 pt).",
+                 "Potential taint sources (input, request.*)",
+                 "and SQL sinks (cursor.execute)."],
+            ),
+            (
+                "attribute",
+                "Attribute",
+                "#e8e8e8", "1.8", "dashed", "1", "rectangle", "black", "#cccccc",
+                "Category 5 — Attribute Access",
+                ["Member access expression: obj.attr.",
+                 "Light grey fill; dashed border (1.8 pt).",
+                 "Resolves taint of compound sources",
+                 "such as request.args.get(…)."],
             ),
             (
                 "strfmt",
-                "#ececec", "1.5", "1", "box",
-                "JoinedStr / PercentFormat\nFormattedValue",
-                "String format constructs.\nCommon SQLi propagation paths.",
+                "JoinedStr  ·  PercentFormat\nFormattedValue",
+                "#777777", "1.8", "solid", "1", "diamond", "white", "#555555",
+                "Category 6 — String Format Expressions",
+                ["f-strings and printf-style formatting.",
+                 "Dark grey diamond; solid border (1.8 pt).",
+                 "Most frequent SQLi propagation pattern",
+                 "in modern Python codebases."],
             ),
             (
                 "name",
-                "#ffffff", "1.0", "1", "box",
                 "Name",
-                "Identifier (variable reference).\nCarries taint state in Phase 2.",
+                "#ffffff", "1.2", "solid", "1", "ellipse", "black", "#dddddd",
+                "Category 7 — Identifier",
+                ["Variable or function name reference.",
+                 "White ellipse; solid border (1.2 pt).",
+                 "Taint state assigned per variable",
+                 "during Phase 2 DFG analysis."],
             ),
             (
                 "expr",
-                "#ffffff", "0.8", "1", "box",
-                "BinaryOp / UnaryOp\nBoolOp / Compare",
-                "Arithmetic and logical expressions.\nPropagate taint transitively.",
+                "BinaryOp  ·  UnaryOp\nBoolOp  ·  Compare",
+                "#eeeeee", "1.0", "dotted", "1", "rectangle", "black", "#d8d8d8",
+                "Category 8 — Arithmetic / Logic Expressions",
+                ["Computational expression nodes.",
+                 "Near-white fill; dotted border (1.0 pt).",
+                 "Propagate taint transitively when",
+                 "any operand is tainted."],
             ),
             (
                 "literal",
-                "#f5f5f5", "0.8", "1", "ellipse",
                 "Literal",
-                "Constant value (str, int, float, bool, None).\nAlways taint-free by definition.",
+                "#cccccc", "0.8", "solid", "1", "ellipse", "black", "#b0b0b0",
+                "Category 9 — Literal Value",
+                ["Constant: str, int, float, bool, None.",
+                 "Grey ellipse; thin solid border (0.8 pt).",
+                 "Always taint-free by definition;",
+                 "never triggers a security alert."],
             ),
         ]
 
-        # Columna A: nodos de ejemplo
-        # Columna B: descripción textual
-        # Se usan subgrafos de rango para alinear por filas
+        prev_node = "col_hdr_node"
+        prev_desc = "col_hdr_desc"
 
-        prev_ex = None
         for entry in entries:
-            eid, fill, pw, peri, shape, type_lbl, desc = entry
+            (slug, type_lbl, fill, pw, bstyle, peri,
+             shape, fcolor, hbg, cat_label, desc_lines) = entry
 
-            ex_id   = f"ex_{eid}"
-            desc_id = f"desc_{eid}"
+            ex_id   = f"ex_{slug}"
+            desc_id = f"desc_{slug}"
+            anch_id = f"anch_{slug}"   # ancla invisible para alinear filas
 
-            # Nodo de ejemplo (replica el estilo real)
-            ex_label = (
-                f'<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="1" CELLPADDING="3">'
-                f'<TR><TD ALIGN="CENTER" BGCOLOR="#dddddd">'
-                f'<B><FONT FACE="{_FONT_TITLE}" POINT-SIZE="10">'
-                f'{_esc(type_lbl)}</FONT></B></TD></TR>'
-                f'<TR><TD ALIGN="LEFT">'
-                f'<FONT FACE="{_FONT_MONO}" POINT-SIZE="8"><I>name</I> = \'example\'</FONT>'
-                f'</TD></TR>'
-                f'<TR><TD ALIGN="RIGHT">'
-                f'<FONT FACE="{_FONT_TITLE}" POINT-SIZE="7"><I>[line:col]</I></FONT>'
-                f'</TD></TR>'
-                f'</TABLE>>'
+            # ── Nodo de ejemplo (fiel al estilo del grafo real) ────────────────
+            hdr_font = "white" if fcolor == "white" else "black"
+            type_lbl_esc = _esc(type_lbl).replace("\\n", "<BR/>")
+
+            ex_rows = (
+                f'<TR><TD ALIGN="CENTER" COLSPAN="2" BGCOLOR="{hbg}">'
+                f'<B><FONT FACE="{_FONT_TITLE}" POINT-SIZE="9" COLOR="{hdr_font}">'
+                f'{type_lbl_esc}</FONT></B></TD></TR>'
+                f'<TR>'
+                f'<TD ALIGN="LEFT" BGCOLOR="{fill}">'
+                f'<FONT FACE="{_FONT_TITLE}" POINT-SIZE="8" COLOR="black">'
+                f'<I>field</I></FONT></TD>'
+                f'<TD ALIGN="LEFT" BGCOLOR="{fill}">'
+                f'<FONT FACE="{_FONT_MONO}" POINT-SIZE="8" COLOR="black">'
+                f"'value'</FONT></TD>"
+                f'</TR>'
+                f'<TR><TD COLSPAN="2" ALIGN="RIGHT" BGCOLOR="{fill}">'
+                f'<FONT FACE="{_FONT_TITLE}" POINT-SIZE="7" COLOR="#444444">'
+                f'<I>[line:col]</I></FONT></TD></TR>'
             )
+
             g.node(
                 ex_id,
-                label       = ex_label,
+                label       = (
+                    f'<<TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" '
+                    f'CELLPADDING="3" COLOR="#888888">{ex_rows}</TABLE>>'
+                ),
                 shape       = shape,
                 fillcolor   = fill,
                 penwidth    = pw,
                 peripheries = peri,
                 color       = "black",
-                width       = "2.6",
+                style       = f"filled,{bstyle}",
+                width       = "2.5",
             )
 
-            # Nodo de descripción textual (sin borde especial)
-            desc_escaped = _esc(desc).replace("\\n", "<BR/>")
-            desc_label = (
-                f'<<FONT FACE="{_FONT_TITLE}" POINT-SIZE="9">'
-                f'{desc_escaped}'
-                f'</FONT>>'
+            # ── Nodo de descripción ────────────────────────────────────────────
+            desc_inner = (
+                f'<TR><TD ALIGN="LEFT">'
+                f'<B><FONT FACE="{_FONT_TITLE}" POINT-SIZE="10">'
+                f'{_esc(cat_label)}</FONT></B>'
+                f'</TD></TR>'
             )
+            for line in desc_lines:
+                desc_inner += (
+                    f'<TR><TD ALIGN="LEFT">'
+                    f'<FONT FACE="{_FONT_TITLE}" POINT-SIZE="9">'
+                    f'{_esc(line)}</FONT>'
+                    f'</TD></TR>'
+                )
+
             g.node(
                 desc_id,
-                label     = desc_label,
-                shape     = "plaintext",
-                fillcolor = "white",
-                penwidth  = "0",
-                width     = "3.6",
+                label    = (
+                    f'<<TABLE BORDER="0" CELLBORDER="0" '
+                    f'CELLSPACING="1" CELLPADDING="2">'
+                    f'{desc_inner}</TABLE>>'
+                ),
+                shape    = "plaintext",
+                fillcolor= "white",
+                penwidth = "0",
+                width    = "4.2",
             )
 
-            # Arista de ejemplo → descripción
+            # ── Alinear ejemplo y descripción en la misma fila (rank=same) ────
+            with g.subgraph() as row:
+                row.attr(rank="same")
+                row.node(ex_id)
+                row.node(desc_id)
+
+            # Separador horizontal entre categorías (nodo invisible)
+            g.node(anch_id, shape="point", width="0.01",
+                   fillcolor="white", color="white", penwidth="0")
+            with g.subgraph() as row2:
+                row2.attr(rank="same")
+                row2.node(anch_id)
+
+            # Aristas para mantener el orden vertical
+            g.edge(prev_node, ex_id,   style="invis")
+            g.edge(prev_desc, desc_id, style="invis")
+            g.edge(ex_id,   anch_id,   style="invis")
+            g.edge(desc_id, anch_id,   style="invis")
+
+            # Línea horizontal separadora entre filas
             g.edge(ex_id, desc_id,
                    arrowhead="none",
-                   penwidth="0.6",
-                   style="dashed",
-                   color="#555555")
+                   penwidth="0.8",
+                   style="solid",
+                   color="#cccccc",
+                   constraint="false")
 
-            # Arista invisible entre filas para controlar el orden vertical
-            if prev_ex:
-                g.edge(prev_ex, ex_id, style="invis")
+            prev_node = anch_id
+            prev_desc = anch_id
 
-            prev_ex = ex_id
+        # ── Pie de leyenda ─────────────────────────────────────────────────────
+        g.node("footer",
+            label = (
+                f'<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="4">'
+                f'<TR><TD WIDTH="600" HEIGHT="1" BGCOLOR="#333333"></TD></TR>'
+                f'<TR><TD ALIGN="LEFT">'
+                f'<FONT FACE="{_FONT_TITLE}" POINT-SIZE="8" COLOR="#555555">'
+                f'<I>★ Double-border nodes are high-security-interest: '
+                f'they represent potential taint sources or SQL injection sinks.</I>'
+                f'</FONT></TD></TR>'
+                f'</TABLE>>'
+            ),
+            shape    = "plaintext",
+            fillcolor= "white",
+            penwidth = "0",
+        )
+        g.edge(prev_node, "footer", style="invis")
 
         out_base = os.path.join(output_dir, "legend")
         g.render(out_base, format="png", cleanup=True, quiet=True)
         return os.path.abspath(out_base + ".png")
 
-    # ── Configuración global del grafo ────────────────────────────────────────
+    # ── Configuración del grafo de AST ────────────────────────────────────────
 
     def _configure_graph(self, g: graphviz.Digraph, caption: str):
         label_attr = ""
@@ -398,9 +570,9 @@ class ASTVisualizer:
             fontname  = _FONT_TITLE,
             fontsize  = "11",
             splines   = "ortho",
-            nodesep   = "0.40",
-            ranksep   = "0.55",
-            pad       = "0.5",
+            nodesep   = "0.45",
+            ranksep   = "0.60",
+            pad       = "0.55",
             dpi       = str(self.dpi),
             label     = label_attr,
             labelloc  = "b",
@@ -412,19 +584,19 @@ class ASTVisualizer:
             fontcolor = "black",
             color     = "black",
             style     = "filled",
-            margin    = "0.10,0.06",
+            margin    = "0.12,0.07",
         )
         g.attr("edge",
             color     = "black",
             fontname  = _FONT_TITLE,
             fontsize  = "8",
             fontcolor = "#333333",
-            arrowsize = "0.6",
-            penwidth  = "0.8",
+            arrowsize = "0.65",
+            penwidth  = "0.9",
             arrowhead = "normal",
         )
 
-    # ── Recorrido recursivo del AST ───────────────────────────────────────────
+    # ── Recorrido recursivo ───────────────────────────────────────────────────
 
     def _next_id(self) -> str:
         self._uid += 1
@@ -439,7 +611,9 @@ class ASTVisualizer:
     ) -> str:
         node_id   = self._next_id()
         node_type = type(node).__name__
-        fill, pw, peri, shape = _STYLE.get(node_type, _DEFAULT_STYLE)
+        fill, pw, bstyle, peri, shape, fcolor, hbg = _STYLE.get(
+            node_type, _DEFAULT_STYLE
+        )
 
         g.node(
             node_id,
@@ -449,6 +623,7 @@ class ASTVisualizer:
             penwidth    = pw,
             peripheries = peri,
             color       = "black",
+            style       = f"filled,{bstyle}",
         )
 
         if parent_id is not None:
