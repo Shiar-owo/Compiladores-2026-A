@@ -1,24 +1,25 @@
 """
-main.py — Demo de la Fase 1: Lexer + Parser + AST
-==================================================
+main.py — Demo de la Fase 1: AST Consumer (reutilizado del compilador huésped)
+=============================================================================
+
+Fase 1: "No reimplementa el lexer ni el parser; consume directamente el AST
+producido por el compilador huésped."
+
+Este código usa el módulo ast de Python como compilador huésped.
 
 Estructura de directorios
 --------------------------
-  phase1/
-  ├── samples/          ← código fuente de entrada (un .py por caso)
-  ├── output/
+  samples/          ← código fuente de entrada (un .py por caso)
+  output/
   │   ├── ast/          ← un PNG por caso (AST sin leyenda)
   │   └── legend/       ← legend.png (leyenda standalone)
-  └── *.py              ← módulos del compilador
 
 Pipeline por cada archivo en samples/
 --------------------------------------
   1. Leer el .py desde samples/
-  2. Lexer  → lista de tokens
-  3. Parser → AST (Module)
-  4. Imprimir tokens en tabla (rich)
-  5. Imprimir AST como árbol (rich + Unicode)
-  6. Exportar AST como PNG en output/ast/
+  2. AST Consumer → AST (Module)  (usa ast.parse del compilador huésped)
+  3. Imprimir AST como árbol (rich + Unicode)
+  4. Exportar AST como PNG en output/ast/
 
 Al final se genera output/legend/legend.png (una sola vez).
 """
@@ -31,9 +32,8 @@ from rich.panel   import Panel
 from rich.rule    import Rule
 from rich.text    import Text
 
-from lexer          import Lexer, TokenStream
-from parser         import Parser
-from ast_printer    import print_ast_tree, print_token_table
+from ast_consumer  import ASTConsumer
+from ast_printer   import print_ast_tree
 from ast_visualizer import ASTVisualizer
 
 con = Console()
@@ -64,10 +64,11 @@ def run_case(
     sample_path: str,
     caption: str,
     visualizer: ASTVisualizer,
+    consumer: ASTConsumer,
 ) -> bool:
     filename = os.path.basename(sample_path)
     slug     = os.path.splitext(filename)[0]
-    title    = caption.split(". ", 1)[-1]   # texto sin "Figure N."
+    title    = caption.split(". ", 1)[-1]
 
     con.print()
     con.print(Rule(f"[bold white]{caption}[/bold white]", style="dim white"))
@@ -85,27 +86,18 @@ def run_case(
         con.print(Text(f"  {i:>3} │ ", style="dim white") + Text(line, style="white"))
     con.print()
 
-    # ── Lexer ─────────────────────────────────────────────────────────────────
-    con.print(Rule("[dim cyan]🔤  Tokens[/dim cyan]", style="dim white"))
+    # ── AST Consumer → AST (usa ast.parse del compilador huésped) ────────
+    con.print(Rule("[dim cyan]🌳  AST (from Python compiler)[/dim cyan]", style="dim white"))
     try:
-        tokens = list(Lexer(source).tokenize())
+        tree = consumer.consume(source)
     except Exception as exc:
-        con.print(f"  [bold red]✗ Lexer error:[/bold red] {exc}")
-        return False
-    print_token_table(tokens, con)
-
-    # ── Parser → AST (consola) ────────────────────────────────────────────────
-    con.print(Rule("[dim cyan]🌳  AST[/dim cyan]", style="dim white"))
-    try:
-        tree = Parser(TokenStream(tokens)).parse()
-    except Exception as exc:
-        con.print(f"  [bold red]✗ Parser error:[/bold red] {exc}")
+        con.print(f"  [bold red]✗ AST Consumer error:[/bold red] {exc}")
         return False
     print_ast_tree(tree, con=con)
 
     node_count = _count_nodes(tree)
     con.print(
-        f"  [green]✓[/green] Parsed — "
+        f"  [green]✓[/green] AST consumed — "
         f"[bold]{len(tree.body)}[/bold] top-level statement(s), "
         f"[bold]{node_count}[/bold] total AST node(s)"
     )
@@ -162,6 +154,7 @@ def main():
         sys.exit(1)
 
     visualizer = ASTVisualizer(output_dir=AST_DIR, dpi=200, rankdir="TB")
+    consumer = ASTConsumer()
 
     # Procesar solo los archivos listados en CASE_META (en orden)
     results: list[tuple[str, bool]] = []
@@ -171,7 +164,7 @@ def main():
             con.print(f"  [yellow]⚠ Skipping missing file: {filename}[/yellow]")
             results.append((caption, False))
             continue
-        ok = run_case(path, caption, visualizer)
+        ok = run_case(path, caption, visualizer, consumer)
         results.append((caption, ok))
 
     # ── Leyenda standalone ────────────────────────────────────────────────────
@@ -204,6 +197,8 @@ def main():
     )
     con.print()
     con.print("  [dim]Next phase: CFG Builder · DFG Builder · Taint Propagation Engine[/dim]")
+    con.print()
+    con.print("  [dim]Fase 1 completada: AST consumido del compilador huésped (Python ast).[/dim]")
     con.print()
 
     sys.exit(0 if ok_count == len(results) else 1)
