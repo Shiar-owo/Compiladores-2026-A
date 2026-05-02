@@ -1,34 +1,18 @@
 """
 ast_visualizer.py — Generador de PNG formal estilo paper científico
-====================================================================
+===================================================================
 
-Estrategia de distinción visual (sin color, apto para impresión B/N)
-----------------------------------------------------------------------
-Cada categoría semántica combina TRES señales independientes para
-garantizar distinción incluso en fotocopia o daltonismo total:
+Estrategia de distinción visual optimizada para publicación académica:
+- Alto contraste para impresión B/N
+- Formas geométricas diferenciadas
+- Bordes con diferente grosor y estilo
+- Paleta de colores académicos profesionales
 
-  1. FORMA del nodo          (box, diamond, hexagon, parallelogram, ellipse…)
-  2. TONO de relleno         (de negro #111 hasta blanco #fff, escala clara)
-  3. GROSOR + ESTILO de borde (sólido fino, sólido grueso, doble, dashed)
-
-Tabla de categorías
-───────────────────────────────────────────────────────────────────────
-  #  Categoría              Forma          Relleno   Borde         Texto
-  ── ─────────────────────  ─────────────  ────────  ────────────  ─────
-  1  Module (root)          rectangle      #1a1a1a   solid 3.0pt   white
-  2  Structural stmts       rectangle      #555555   solid 2.0pt   white
-  3  Simple stmts           rectangle      #aaaaaa   solid 1.2pt   black
-  4  FCall / Sink           doubleoctagon  #ffffff   solid 2.5pt   black
-  5  Attribute / Subscript  rectangle      #dddddd   dashed 1.5pt  black
-  6  String format          diamond        #888888   solid 1.5pt   white
-  7  Name (identifier)      ellipse        #ffffff   solid 1.0pt   black
-  8  Expressions            rectangle      #eeeeee   dotted 1.0pt  black
-  9  Literal                ellipse        #cccccc   solid 0.8pt   black
-
-Cada nodo muestra:
-  ── TIPO_NODO ──          Times New Roman 11pt bold
-  campo  valor             Times New Roman 9pt / Courier 9pt
-  [línea:col]              Times New Roman 8pt italic
+Estilo visual:
+- Marco formal con border de doble línea
+- Caption con numeración de figura
+- Footer con metadatos del sistema
+- Tipografía: Times New Roman (serif académico)
 """
 
 from __future__ import annotations
@@ -42,57 +26,59 @@ from ast_nodes import ASTNode
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Esquema visual  (fill, penwidth, style, peripheries, shape, fontcolor, header_bg)
+# Esquema visual académico
+# Fill: color de relleno | Pen: grosor borde | Style: estilo borde
+# Peri: número de bordes | Shape: forma geométrica | FColor: color texto header
+# HBG: color fondo header
 # ──────────────────────────────────────────────────────────────────────────────
 
 _S = dict[str, tuple]
 
-# (fillcolor, penwidth, border_style, peripheries, shape, fontcolor, header_bg)
 _STYLE: _S = {
-    # 1 ── Module — negro sólido, texto blanco
-    "Module":              ("#1a1a1a", "3.0", "solid",  "1", "rectangle",     "white",  "#000000"),
+    # Categoría 1: Module (raíz) - negro oscuro con texto blanco
+    "Module":              ("#0d0d0d", "2.5", "solid",  "1", "rectangle",     "white",  "#000000"),
 
-    # 2 ── Sentencias estructurales — gris oscuro, texto blanco
-    "FunctionDef":         ("#4a4a4a", "2.0", "solid",  "1", "rectangle",     "white",  "#333333"),
-    "IfStatement":         ("#4a4a4a", "2.0", "solid",  "1", "rectangle",     "white",  "#333333"),
-    "ElifClause":          ("#666666", "1.5", "solid",  "1", "rectangle",     "white",  "#444444"),
-    "WhileStatement":      ("#4a4a4a", "2.0", "solid",  "1", "rectangle",     "white",  "#333333"),
-    "ForStatement":        ("#4a4a4a", "2.0", "solid",  "1", "rectangle",     "white",  "#333333"),
+    # Categoría 2: Sentencias estructurales - gris oscuro
+    "FunctionDef":         ("#3d3d3d", "2.0", "solid",  "1", "rectangle",     "white",  "#1a1a1a"),
+    "IfStatement":         ("#3d3d3d", "2.0", "solid",  "1", "rectangle",     "white",  "#1a1a1a"),
+    "ElifClause":          ("#5a5a5a", "1.8", "solid",  "1", "rectangle",     "white",  "#333333"),
+    "WhileStatement":      ("#3d3d3d", "2.0", "solid",  "1", "rectangle",     "white",  "#1a1a1a"),
+    "ForStatement":        ("#3d3d3d", "2.0", "solid",  "1", "rectangle",     "white",  "#1a1a1a"),
 
-    # 3 ── Sentencias simples — gris medio, texto negro
-    "AssignStatement":     ("#aaaaaa", "1.2", "solid",  "1", "rectangle",     "black",  "#888888"),
-    "AugAssignStatement":  ("#aaaaaa", "1.2", "solid",  "1", "rectangle",     "black",  "#888888"),
-    "ExprStatement":       ("#bbbbbb", "1.0", "solid",  "1", "rectangle",     "black",  "#999999"),
-    "ReturnStatement":     ("#bbbbbb", "1.0", "solid",  "1", "rectangle",     "black",  "#999999"),
-    "ImportStatement":     ("#bbbbbb", "1.0", "solid",  "1", "rectangle",     "black",  "#999999"),
-    "Param":               ("#cccccc", "0.8", "solid",  "1", "rectangle",     "black",  "#aaaaaa"),
+    # Categoría 3: Sentencias simples - gris medio
+    "AssignStatement":     ("#9a9a9a", "1.5", "solid",  "1", "rectangle",     "black",  "#666666"),
+    "AugAssignStatement":  ("#9a9a9a", "1.5", "solid",  "1", "rectangle",     "black",  "#666666"),
+    "ExprStatement":       ("#b0b0b0", "1.2", "solid",  "1", "rectangle",     "black",  "#808080"),
+    "ReturnStatement":     ("#b0b0b0", "1.2", "solid",  "1", "rectangle",     "black",  "#808080"),
+    "ImportStatement":     ("#b0b0b0", "1.2", "solid",  "1", "rectangle",     "black",  "#808080"),
+    "Param":               ("#c0c0c0", "1.0", "solid",  "1", "rectangle",     "black",  "#909090"),
 
-    # 4 ── FCall / Sink — doble borde octagonal, blanco puro (MÁS LLAMATIVO)
-    "FCall":               ("#ffffff", "2.5", "solid",  "2", "octagon",       "black",  "#dddddd"),
-    "Subscript":           ("#f0f0f0", "2.0", "solid",  "2", "octagon",       "black",  "#d0d0d0"),
+    # Categoría 4: FCall / Sink - doble borde (notación de seguridad)
+    "FCall":               ("#f5f5f5", "2.2", "solid",  "2", "octagon",       "black",  "#d0d0d0"),
+    "Subscript":           ("#f0f0f0", "2.0", "solid",  "2", "octagon",       "black",  "#c5c5c5"),
 
-    # 5 ── Attribute — borde dashed, gris muy claro
-    "Attribute":           ("#e8e8e8", "1.8", "dashed", "1", "rectangle",     "black",  "#cccccc"),
+    # Categoría 5: Attribute - borde discontinuo
+    "Attribute":           ("#e5e5e5", "1.5", "dashed", "1", "rectangle",     "black",  "#bbbbbb"),
 
-    # 6 ── String format — diamante, gris medio-oscuro, texto blanco
-    "JoinedStr":           ("#777777", "1.8", "solid",  "1", "diamond",       "white",  "#555555"),
-    "FormattedValue":      ("#999999", "1.2", "solid",  "1", "diamond",       "white",  "#777777"),
-    "PercentFormat":       ("#777777", "1.8", "solid",  "1", "diamond",       "white",  "#555555"),
+    # Categoría 6: String format - diamante
+    "JoinedStr":           ("#6a6a6a", "1.8", "solid",  "1", "diamond",       "white",  "#404040"),
+    "FormattedValue":      ("#888888", "1.4", "solid",  "1", "diamond",       "white",  "#5a5a5a"),
+    "PercentFormat":       ("#6a6a6a", "1.8", "solid",  "1", "diamond",       "white",  "#404040"),
 
-    # 7 ── Name (variable) — elipse, blanco, borde sólido fino
-    "Name":                ("#ffffff", "1.2", "solid",  "1", "ellipse",       "black",  "#dddddd"),
+    # Categoría 7: Name (identificador)
+    "Name":                ("#fafafa", "1.0", "solid",  "1", "ellipse",       "black",  "#e0e0e0"),
 
-    # 8 ── Expresiones — borde punteado, gris muy claro
-    "BinaryOp":            ("#eeeeee", "1.0", "dotted", "1", "rectangle",     "black",  "#d8d8d8"),
-    "UnaryOp":             ("#eeeeee", "1.0", "dotted", "1", "rectangle",     "black",  "#d8d8d8"),
-    "BoolOp":              ("#eeeeee", "1.0", "dotted", "1", "rectangle",     "black",  "#d8d8d8"),
-    "Compare":             ("#eeeeee", "1.0", "dotted", "1", "rectangle",     "black",  "#d8d8d8"),
-    "Keyword":             ("#eeeeee", "0.8", "dotted", "1", "rectangle",     "black",  "#d8d8d8"),
-    "Tuple":               ("#f4f4f4", "0.8", "dotted", "1", "rectangle",     "black",  "#e0e0e0"),
-    "PyList":              ("#f4f4f4", "0.8", "dotted", "1", "rectangle",     "black",  "#e0e0e0"),
+    # Categoría 8: Expresiones - borde punteado
+    "BinaryOp":            ("#f5f5f5", "0.8", "dotted", "1", "rectangle",     "black",  "#e5e5e5"),
+    "UnaryOp":             ("#f5f5f5", "0.8", "dotted", "1", "rectangle",     "black",  "#e5e5e5"),
+    "BoolOp":              ("#f5f5f5", "0.8", "dotted", "1", "rectangle",     "black",  "#e5e5e5"),
+    "Compare":             ("#f5f5f5", "0.8", "dotted", "1", "rectangle",     "black",  "#e5e5e5"),
+    "Keyword":             ("#f5f5f5", "0.6", "dotted", "1", "rectangle",     "black",  "#e5e5e5"),
+    "Tuple":               ("#f8f8f8", "0.6", "dotted", "1", "rectangle",     "black",  "#eeeeee"),
+    "PyList":              ("#f8f8f8", "0.6", "dotted", "1", "rectangle",     "black",  "#eeeeee"),
 
-    # 9 ── Literal — elipse gris claro, borde sólido fino
-    "Literal":             ("#cccccc", "0.8", "solid",  "1", "ellipse",       "black",  "#b0b0b0"),
+    # Categoría 9: Literal - elipse gris
+    "Literal":             ("#d0d0d0", "0.8", "solid",  "1", "ellipse",       "black",  "#a0a0a0"),
 }
 
 _DEFAULT_STYLE = ("#f8f8f8", "0.8", "solid", "1", "rectangle", "black", "#dddddd")
@@ -153,25 +139,24 @@ def _children(node: ASTNode) -> list[tuple[str, ASTNode]]:
 
 def _make_label(node: ASTNode) -> str:
     """
-    Etiqueta HTML-like estructurada en tres zonas:
+    Etiqueta formal estilo académico:
       ┌─────────────────────────────┐
-      │  [HEADER BG]  TIPO_NODO     │  bold, fuente según fontcolor
+      │  [HEADER]    TIPO_NODO      │  bold 10pt
       ├─────────────────────────────┤
-      │  attr_name    attr_value    │  9pt
+      │  field       value          │  8pt / 8pt mono
       ├─────────────────────────────┤
-      │              [línea:col]    │  8pt itálica
+      │                    [l:n]     │  7pt italic
       └─────────────────────────────┘
     """
     node_type = type(node).__name__
     fill, pw, bstyle, peri, shape, fcolor, hbg = _STYLE.get(node_type, _DEFAULT_STYLE)
 
-    # Color del texto en la cabecera (contraste con header_bg)
     hdr_font = "white" if fcolor == "white" else "black"
 
     rows = (
         f'<TR>'
-        f'<TD ALIGN="CENTER" COLSPAN="2" BGCOLOR="{hbg}">'
-        f'<B><FONT FACE="{_FONT_TITLE}" POINT-SIZE="11" COLOR="{hdr_font}">'
+        f'<TD BORDER="0" ALIGN="CENTER" COLSPAN="2" BGCOLOR="{hbg}" SIDES="TB">'
+        f'<B><FONT FACE="{_FONT_TITLE}" POINT-SIZE="10" COLOR="{hdr_font}">'
         f'{node_type}</FONT></B>'
         f'</TD></TR>'
     )
@@ -179,27 +164,27 @@ def _make_label(node: ASTNode) -> str:
     for attr_name, attr_val in _scalar_attrs(node):
         rows += (
             f'<TR>'
-            f'<TD ALIGN="LEFT" BGCOLOR="{fill}">'
-            f'<FONT FACE="{_FONT_TITLE}" POINT-SIZE="9" COLOR="black">'
+            f'<TD BORDER="0" ALIGN="LEFT" BGCOLOR="{fill}">'
+            f'<FONT FACE="{_FONT_TITLE}" POINT-SIZE="8" COLOR="#222222">'
             f'<I>{attr_name}</I></FONT>'
             f'</TD>'
-            f'<TD ALIGN="LEFT" BGCOLOR="{fill}">'
-            f'<FONT FACE="{_FONT_MONO}" POINT-SIZE="9" COLOR="black">'
+            f'<TD BORDER="0" ALIGN="LEFT" BGCOLOR="{fill}">'
+            f'<FONT FACE="{_FONT_MONO}" POINT-SIZE="8" COLOR="#222222">'
             f'{attr_val}</FONT>'
             f'</TD></TR>'
         )
 
     rows += (
         f'<TR>'
-        f'<TD COLSPAN="2" ALIGN="RIGHT" BGCOLOR="{fill}">'
-        f'<FONT FACE="{_FONT_TITLE}" POINT-SIZE="8" COLOR="#444444">'
+        f'<TD BORDER="0" COLSPAN="2" ALIGN="RIGHT" BGCOLOR="{fill}">'
+        f'<FONT FACE="{_FONT_TITLE}" POINT-SIZE="7" COLOR="#666666">'
         f'<I>[{node.line}:{node.col}]</I></FONT>'
         f'</TD></TR>'
     )
 
     return (
-        f'<<TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" '
-        f'CELLPADDING="4" COLOR="#888888">{rows}</TABLE>>'
+        f'<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" '
+        f'CELLPADDING="3" COLOR="#666666">{rows}</TABLE>>'
     )
 
 
@@ -237,6 +222,7 @@ class ASTVisualizer:
         g = graphviz.Digraph(name=filename, comment=f"AST — {filename}")
         self._configure_graph(g, caption)
         self._visit(g, root, parent_id=None, edge_label="")
+
         out_base = os.path.join(self.output_dir, filename)
         g.render(out_base, format="png", cleanup=True, quiet=True)
         return os.path.abspath(out_base + ".png")
@@ -281,14 +267,14 @@ class ASTVisualizer:
         # ── Título formal ──────────────────────────────────────────────────────
         g.node("title",
             label = (
-                f'<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="6">'
+                f'<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="8">'
                 f'<TR><TD>'
-                f'<B><FONT FACE="{_FONT_TITLE}" POINT-SIZE="14">'
-                f'Figure A. Node Classification Legend</FONT></B>'
+                f'<B><FONT FACE="{_FONT_TITLE}" POINT-SIZE="13" COLOR="#1a1a1a">'
+                f'Figure A. AST Node Classification Legend</FONT></B>'
                 f'</TD></TR>'
                 f'<TR><TD>'
-                f'<FONT FACE="{_FONT_TITLE}" POINT-SIZE="10">'
-                f'<I>Abstract Syntax Tree — Security Linter, Phase 1</I>'
+                f'<FONT FACE="{_FONT_TITLE}" POINT-SIZE="9" COLOR="#444444">'
+                f'<I>Security Linter — Phase 1: Lexer + Parser + AST</I>'
                 f'</FONT>'
                 f'</TD></TR>'
                 f'</TABLE>>'
@@ -558,41 +544,61 @@ class ASTVisualizer:
     # ── Configuración del grafo de AST ────────────────────────────────────────
 
     def _configure_graph(self, g: graphviz.Digraph, caption: str):
-        label_attr = ""
+        # Extraer número de figura y título del caption
+        fig_num = ""
+        fig_title = ""
         if caption:
-            label_attr = (
-                f'<<FONT FACE="{_FONT_TITLE}" POINT-SIZE="11">'
-                f'<I>{_esc(caption)}</I></FONT>>'
+            parts = caption.split(". ", 1)
+            if len(parts) > 1:
+                fig_num = parts[0]  # "Figure 1"
+                fig_title = parts[1]  # "AST for Case..."
+
+        # Crear caption formal con número de figura y título
+        caption_label = ""
+        if caption:
+            caption_label = (
+                f'<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="0">'
+                f'<TR><TD ALIGN="CENTER">'
+                f'<FONT FACE="{_FONT_TITLE}" POINT-SIZE="12" COLOR="#1a1a1a">'
+                f'<B>{fig_num}</B></FONT>'
+                f'</TD></TR>'
+                f'<TR><TD ALIGN="CENTER">'
+                f'<FONT FACE="{_FONT_TITLE}" POINT-SIZE="11" COLOR="#333333">'
+                f'<I>{_esc(fig_title)}</I></FONT>'
+                f'</TD></TR>'
+                f'</TABLE>>'
             )
+
         g.attr(
             rankdir   = self.rankdir,
             bgcolor   = "white",
             fontname  = _FONT_TITLE,
-            fontsize  = "11",
+            fontsize  = "10",
             splines   = "ortho",
-            nodesep   = "0.45",
-            ranksep   = "0.60",
-            pad       = "0.55",
+            nodesep   = "0.35",
+            ranksep   = "0.50",
+            pad       = "0.8",
             dpi       = str(self.dpi),
-            label     = label_attr,
-            labelloc  = "b",
+            label     = caption_label,
+            labelloc  = "t",
             labeljust = "c",
+            margin    = "0.5,0.3",
         )
         g.attr("node",
             fontname  = _FONT_TITLE,
-            fontsize  = "10",
+            fontsize  = "9",
             fontcolor = "black",
             color     = "black",
             style     = "filled",
-            margin    = "0.12,0.07",
+            margin    = "0.10,0.05",
         )
         g.attr("edge",
-            color     = "black",
+            color     = "#2a2a2a",
             fontname  = _FONT_TITLE,
-            fontsize  = "8",
-            fontcolor = "#333333",
-            arrowsize = "0.65",
-            penwidth  = "0.9",
+            fontsize  = "7",
+            fontcolor = "#444444",
+            arrowsize = "0.6",
+            penwidth  = "0.8",
             arrowhead = "normal",
         )
 
