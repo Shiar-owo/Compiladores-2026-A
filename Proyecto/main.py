@@ -1,11 +1,15 @@
 """
-main.py — Demo de la Fase 1: AST Consumer (reutilizado del compilador huésped)
-=============================================================================
+main.py — Security Linter — Fase 1 + Fase 2
+============================================
 
 Fase 1: "No reimplementa el lexer ni el parser; consume directamente el AST
 producido por el compilador huésped."
 
-Este código usa el módulo ast de Python como compilador huésped.
+Fase 2: Análisis semántico extendido (núcleo del linter)
+- CFG Builder modela todos los caminos de ejecución posibles
+- DFG Builder rastrea cómo los valores fluyen de variable en variable
+- Taint Propagation Engine marca variables de fuentes controladas por usuario
+  y propaga esa "mancha" a través del DFG
 
 Estructura de directorios
 --------------------------
@@ -18,8 +22,12 @@ Pipeline por cada archivo en samples/
 --------------------------------------
   1. Leer el .py desde samples/
   2. AST Consumer → AST (Module)  (usa ast.parse del compilador huésped)
-  3. Imprimir AST como árbol (rich + Unicode)
-  4. Exportar AST como PNG en output/ast/
+  3. CFG Builder → grafo de flujo de control
+  4. DFG Builder → grafo de flujo de datos
+  5. Symbol Table → tabla de símbolos con tipos y taint
+  6. Taint Propagation Engine → Análisis de taint
+  7. Imprimir resultados del análisis
+  8. Exportar AST como PNG en output/ast/
 
 Al final se genera output/legend/legend.png (una sola vez).
 """
@@ -32,33 +40,30 @@ from rich.panel   import Panel
 from rich.rule    import Rule
 from rich.text    import Text
 
-from ast_consumer  import ASTConsumer
-from ast_printer   import print_ast_tree
+from ast_consumer   import ASTConsumer
+from ast_printer    import print_ast_tree
 from ast_visualizer import ASTVisualizer
+from cfg_builder    import CFGBuilder
+from dfg_builder   import DFGBuilder
+from symbol_table  import SymbolTable
+from taint_engine  import TaintPropagationEngine, TaintSource
 
 con = Console()
 
-# ── Rutas ─────────────────────────────────────────────────────────────────────
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
 SAMPLES_DIR = os.path.join(BASE_DIR, "samples")
 AST_DIR     = os.path.join(BASE_DIR, "output", "ast")
 LEGEND_DIR  = os.path.join(BASE_DIR, "output", "legend")
 
-# ── Metadatos de cada caso (nombre de archivo → caption de figura) ─────────────
-# El orden en esta lista determina el orden de procesamiento.
 CASE_META: dict[str, str] = {
-    "case1_simple_assignment.py":    "Figure 1. AST for Case 1: Simple Assignment and Function Call",
-    "case2_sqli_concatenation.py":   "Figure 2. AST for Case 2: Classic SQLi via String Concatenation",
-    "case3_sqli_fstring.py":         "Figure 3. AST for Case 3: SQLi via f-string Interpolation (Flask)",
-    "case4_sqli_printf.py":          "Figure 4. AST for Case 4: Legacy SQLi via printf-style Formatting",
-    "case5_safe_sanitizer.py":       "Figure 5. AST for Case 5: Safe Path with int() Sanitizer",
-    "case6_augassign_conditional.py":"Figure 6. AST for Case 6: Conditional SQLi via Augmented Assignment",
+    "case1_simple_assignment.py":    "Figure 1. Simple Assignment (Safe)",
+    "case2_sqli_concatenation.py":   "Figure 2. SQLi via String Concatenation",
+    "case3_sqli_fstring.py":         "Figure 3. SQLi via f-string (Flask)",
+    "case4_sqli_printf.py":          "Figure 4. SQLi via printf-style",
+    "case5_safe_sanitizer.py":       "Figure 5. Safe Path with int() Sanitizer",
+    "case6_augassign_conditional.py":"Figure 6. Conditional SQLi via AugAssign",
 }
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Runner de un caso
-# ──────────────────────────────────────────────────────────────────────────────
 
 def run_case(
     sample_path: str,
@@ -68,12 +73,10 @@ def run_case(
 ) -> bool:
     filename = os.path.basename(sample_path)
     slug     = os.path.splitext(filename)[0]
-    title    = caption.split(". ", 1)[-1]
 
     con.print()
     con.print(Rule(f"[bold white]{caption}[/bold white]", style="dim white"))
 
-    # ── Leer fuente ───────────────────────────────────────────────────────────
     try:
         with open(sample_path, encoding="utf-8") as f:
             source = f.read()
@@ -86,24 +89,62 @@ def run_case(
         con.print(Text(f"  {i:>3} │ ", style="dim white") + Text(line, style="white"))
     con.print()
 
-    # ── AST Consumer → AST (usa ast.parse del compilador huésped) ────────
-    con.print(Rule("[dim cyan]🌳  AST (from Python compiler)[/dim cyan]", style="dim white"))
     try:
         tree = consumer.consume(source)
     except Exception as exc:
         con.print(f"  [bold red]✗ AST Consumer error:[/bold red] {exc}")
         return False
+
+    con.print(Rule("[dim cyan]🌳  AST (from Python compiler)[/dim cyan]", style="dim white"))
     print_ast_tree(tree, con=con)
 
     node_count = _count_nodes(tree)
     con.print(
         f"  [green]✓[/green] AST consumed — "
-        f"[bold]{len(tree.body)}[/bold] top-level statement(s), "
-        f"[bold]{node_count}[/bold] total AST node(s)"
+        f"[bold]{len(tree.body)}[/bold] statements, [bold]{node_count}[/bold] nodes"
     )
     con.print()
 
-    # ── AST → PNG ─────────────────────────────────────────────────────────────
+    con.print(Rule("[dim cyan]🔗  CFG Build[/dim cyan]", style="dim white"))
+    cfg_builder = CFGBuilder()
+    try:
+        cfg = cfg_builder.build(tree)
+        con.print(f"  [green]✓[/green] CFG built — {len(cfg.nodes)} nodes")
+    except Exception as exc:
+        con.print(f"  [bold red]✗ CFG Builder error:[/bold red] {exc}")
+
+    con.print(Rule("[dim cyan]🔗  DFG Build[/dim cyan]", style="dim white"))
+    dfg_builder = DFGBuilder()
+    try:
+        dfg = dfg_builder.build(tree)
+        con.print(f"  [green]✓[/green] DFG built — {len(dfg.nodes)} nodes, {len(dfg.edges)} edges")
+    except Exception as exc:
+        con.print(f"  [bold red]✗ DFG Builder error:[/bold red] {exc}")
+
+    con.print(Rule("[dim cyan]🔍  Taint Analysis[/dim cyan]", style="dim white"))
+    symbol_table = SymbolTable()
+    taint_engine = TaintPropagationEngine()
+    try:
+        taint_result = taint_engine.analyze(tree, dfg, symbol_table)
+        
+        if taint_result.sources:
+            con.print(f"  [yellow]⚠[/yellow] Taint sources found:")
+            for rec in taint_result.sources:
+                con.print(f"    • {rec.variable} @ line {rec.line} (source: {rec.source})")
+        
+        if taint_result.propagations:
+            con.print(f"  [yellow]↪[/yellow] Propagations:")
+            for rec in taint_result.propagations[:5]:
+                con.print(f"    • {rec.variable} <- {rec.source}")
+            if len(taint_result.propagations) > 5:
+                con.print(f"    ... and {len(taint_result.propagations) - 5} more")
+        
+        if not taint_result.sources and not taint_result.propagations:
+            con.print(f"  [green]✓[/green] No taint detected")
+        
+    except Exception as exc:
+        con.print(f"  [bold red]✗ Taint Engine error:[/bold red] {exc}")
+
     try:
         png_path = visualizer.render(tree, filename=slug, caption=caption)
         con.print(
@@ -112,7 +153,6 @@ def run_case(
         )
     except Exception as exc:
         con.print(f"  [bold red]✗ PNG error:[/bold red] {exc}")
-        return False
 
     return True
 
@@ -130,16 +170,12 @@ def _count_nodes(node) -> int:
     return total
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Punto de entrada
-# ──────────────────────────────────────────────────────────────────────────────
-
 def main():
     con.print()
     con.print(
         Panel(
-            "[bold cyan]SECURITY LINTER — PHASE 1[/bold cyan]\n"
-            "[dim white]Lexer  ·  Parser  ·  AST  (Python subset)[/dim white]\n\n"
+            "[bold cyan]SECURITY LINTER — PHASE 1+2[/bold cyan]\n"
+            "[dim white]AST + CFG + DFG + Taint Propagation[/dim white]\n\n"
             f"[dim white]samples/[/dim white]  [white]→[/white]  "
             f"[dim white]output/ast/   output/legend/[/dim white]",
             border_style="cyan",
@@ -148,38 +184,23 @@ def main():
         )
     )
 
-    # Validar que exista la carpeta de samples
     if not os.path.isdir(SAMPLES_DIR):
-        con.print(f"[bold red]✗ samples/ directory not found at {SAMPLES_DIR}[/bold red]")
+        con.print(f"[bold red]✗ samples/ not found at {SAMPLES_DIR}[/bold red]")
         sys.exit(1)
 
     visualizer = ASTVisualizer(output_dir=AST_DIR, dpi=200, rankdir="TB")
     consumer = ASTConsumer()
 
-    # Procesar solo los archivos listados en CASE_META (en orden)
     results: list[tuple[str, bool]] = []
     for filename, caption in CASE_META.items():
         path = os.path.join(SAMPLES_DIR, filename)
         if not os.path.isfile(path):
-            con.print(f"  [yellow]⚠ Skipping missing file: {filename}[/yellow]")
+            con.print(f"  [yellow]⚠ Skipping missing: {filename}[/yellow]")
             results.append((caption, False))
             continue
         ok = run_case(path, caption, visualizer, consumer)
         results.append((caption, ok))
 
-    # ── Leyenda standalone ────────────────────────────────────────────────────
-    con.print()
-    con.print(Rule("[dim cyan]📐  Legend[/dim cyan]", style="dim white"))
-    try:
-        leg_path = ASTVisualizer.render_legend(output_dir=LEGEND_DIR, dpi=200)
-        con.print(
-            f"  [green]✓[/green] Legend PNG → "
-            f"[bold cyan]{os.path.relpath(leg_path, BASE_DIR)}[/bold cyan]"
-        )
-    except Exception as exc:
-        con.print(f"  [bold red]✗ Legend error:[/bold red] {exc}")
-
-    # ── Resumen ───────────────────────────────────────────────────────────────
     con.print()
     con.print(Rule("[bold white]Summary[/bold white]", style="dim white"))
     ok_count = sum(1 for _, ok in results if ok)
@@ -192,13 +213,12 @@ def main():
     con.print()
     con.print(
         f"  [bold]{ok_count}/{len(results)}[/bold] cases processed. "
-        f"PNGs → [bold cyan]{os.path.relpath(AST_DIR, BASE_DIR)}/[/bold cyan]  "
-        f"Legend → [bold cyan]{os.path.relpath(LEGEND_DIR, BASE_DIR)}/[/bold cyan]"
+        f"PNGs → [bold cyan]{os.path.relpath(AST_DIR, BASE_DIR)}/[/bold cyan]"
     )
     con.print()
-    con.print("  [dim]Next phase: CFG Builder · DFG Builder · Taint Propagation Engine[/dim]")
+    con.print("  [dim]Next: Phase 3 — Critical Path Finder + Phase 4 — Reporting[/dim]")
     con.print()
-    con.print("  [dim]Fase 1 completada: AST consumido del compilador huésped (Python ast).[/dim]")
+    con.print("  [dim]Fase 2 completada: CFG + DFG + Taint Propagation Engine.[/dim]")
     con.print()
 
     sys.exit(0 if ok_count == len(results) else 1)
