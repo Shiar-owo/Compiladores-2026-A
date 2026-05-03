@@ -1,311 +1,371 @@
 """
 cfg_builder.py — Control Flow Graph Builder
-=======================================
+============================================
 
-Modela todos los caminos de ejecución posibles:
-- condicionales (if/elif/else)
-- loops (while/for)
-- excepciones
-- llamadas a funciones
+Construye el CFG a partir del AST del subconjunto Python del linter.
+
+Correcciones respecto a la versión original
+-------------------------------------------
+1. _build_function  : los nodos del body se encadenan linealmente entre sí
+                      y se conectan correctamente al EXIT del módulo.
+2. _build_if        : se crea un nodo MERGE explícito al que convergen
+                      todas las ramas (True, False, elif). Así los nodos
+                      que siguen al if tienen un predecesor concreto.
+3. _build_while     : los nodos del body se encadenan entre sí y el último
+                      forma la back-edge al header del loop.
+4. _build_for       : igual que while — body encadenado.
+5. Etiquetas        : se extraen del AST para que reflejen el código real
+                      (se usan en el visualizador).
 """
 
 from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Any, Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Tuple
 
 from ast_nodes import (
     ASTNode,
     Module, AssignStatement, AugAssignStatement, ExprStatement,
     IfStatement, WhileStatement, ForStatement, FunctionDef, ReturnStatement,
-    FCall, Attribute, Name, BinaryOp, UnaryOp, BoolOp, Compare,
+    ImportStatement,
+    FCall, Attribute, Name, BinaryOp, Literal,
+    JoinedStr, PercentFormat,
 )
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Tipos y nodos
+# ──────────────────────────────────────────────────────────────────────────────
+
 class CFGNodeType(Enum):
-    """Tipos de nodos en el CFG."""
-    ENTRY = auto()
-    EXIT = auto()
-    ASSIGN = auto()
-    CALL = auto()
-    IF = auto()
-    CONDITION = auto()
-    WHILE = auto()
-    FOR = auto()
-    RETURN = auto()
-    RAISE = auto()
-    TRY = auto()
+    ENTRY     = auto()
+    EXIT      = auto()
+    ASSIGN    = auto()   # x = expr  /  x += expr
+    CALL      = auto()   # expr usada como sentencia (execute, print, …)
+    CONDITION = auto()   # if / elif / while condition
+    MERGE     = auto()   # punto de convergencia tras if/elif/else
+    LOOP_HEAD = auto()   # cabecera de while / for
+    LOOP_BODY = auto()   # nodo sintético de cuerpo de loop
+    RETURN    = auto()
+    IMPORT    = auto()
+    FUNC_DEF  = auto()   # definición de función (nodo contenedor)
 
 
 @dataclass
 class CFGNode:
-    """Nodo del CFG representando una operación."""
-    id: int
-    type: CFGNodeType
-    ast_node: Optional[ASTNode] = None
-    label: str = ""
-    line: int = 0
-    col: int = 0
-    successors: List[CFGNode] = field(default_factory=list)
-    predecessors: List[CFGNode] = field(default_factory=list)
+    id:           int
+    type:         CFGNodeType
+    ast_node:     Optional[ASTNode] = None
+    label:        str               = ""
+    line:         int               = 0
+    col:          int               = 0
+    successors:   List["CFGNode"]   = field(default_factory=list)
+    predecessors: List["CFGNode"]   = field(default_factory=list)
 
-    def __repr__(self) -> str:
-        return f"CFGNode({self.id}, {self.type.name})"
-
-
-@dataclass
-class CFGBlock:
-    """Bloque básico del CFG."""
-    id: int
-    nodes: List[CFGNode] = field(default_factory=list)
-    entry: Optional[CFGNode] = None
-    exit: Optional[CFGNode] = None
+    def __hash__(self):   return self.id
+    def __eq__(self, o):  return isinstance(o, CFGNode) and self.id == o.id
+    def __repr__(self):   return f"CFGNode({self.id}, {self.type.name}, {self.label!r})"
 
 
 class CFG:
-    """Control Flow Graph completo."""
-    
     def __init__(self):
-        self.nodes: Dict[int, CFGNode] = {}
-        self.entry: Optional[CFGNode] = None
-        self.exit: Optional[CFGNode] = None
+        self.nodes:   Dict[int, CFGNode] = {}
+        self.entry:   Optional[CFGNode]  = None
+        self.exit:    Optional[CFGNode]  = None
         self._next_id = 0
 
-    def new_node(
-        self,
-        node_type: CFGNodeType,
-        ast_node: Optional[ASTNode] = None,
-        label: str = "",
-    ) -> CFGNode:
+    def new_node(self, node_type: CFGNodeType,
+                 ast_node: Optional[ASTNode] = None,
+                 label: str = "") -> CFGNode:
         node = CFGNode(
-            id=self._next_id,
-            type=node_type,
-            ast_node=ast_node,
-            label=label or node_type.name,
-            line=ast_node.line if ast_node else 0,
-            col=ast_node.col if ast_node else 0,
+            id       = self._next_id,
+            type     = node_type,
+            ast_node = ast_node,
+            label    = label or node_type.name,
+            line     = ast_node.line if ast_node else 0,
+            col      = ast_node.col  if ast_node else 0,
         )
         self._next_id += 1
         self.nodes[node.id] = node
         return node
 
-    def add_edge(self, from_: CFGNode, to: CFGNode):
-        """Agrega una arista directed."""
-        from_.successors.append(to)
-        to.predecessors.append(from_)
+    def add_edge(self, src: CFGNode, dst: CFGNode):
+        if dst not in src.successors:
+            src.successors.append(dst)
+        if src not in dst.predecessors:
+            dst.predecessors.append(src)
 
-    def add_edges(self, from_: CFGNode, tos: List[CFGNode]):
-        """Agrega múltiples aristas."""
-        for to in tos:
-            self.add_edge(from_, to)
-
-    def get_all_paths(
-        self,
-        start: Optional[CFGNode] = None,
-        end: Optional[CFGNode] = None,
-    ) -> List[List[CFGNode]]:
-        """Encuentra todos los caminos entre dos nodos."""
-        if start is None:
-            start = self.entry
-        if end is None:
-            end = self.exit
-
-        paths: List[List[CFGNode]] = []
-        current_path: List[CFGNode] = [start]
-        visited: Set[int] = set()
-
+    def get_all_paths(self, start: Optional[CFGNode] = None,
+                      end: Optional[CFGNode] = None) -> List[List[CFGNode]]:
+        if start is None: start = self.entry
+        if end   is None: end   = self.exit
+        paths, path, visited = [], [start], set()
         def dfs(node: CFGNode):
             if node == end:
-                paths.append(current_path[:])
-                return
-            
+                paths.append(path[:]); return
             visited.add(node.id)
-            for succ in node.successors:
-                if succ.id not in visited:
-                    current_path.append(succ)
-                    dfs(succ)
-                    current_path.pop()
+            for s in node.successors:
+                if s.id not in visited:
+                    path.append(s); dfs(s); path.pop()
             visited.remove(node.id)
-
         dfs(start)
         return paths
 
     def __repr__(self) -> str:
-        lines = [f"CFG(entry={self.entry}, exit={self.exit})"]
+        lines = [f"CFG(entry={self.entry.id}, exit={self.exit.id}, "
+                 f"{len(self.nodes)} nodes)"]
         for node in self.nodes.values():
             succs = [s.id for s in node.successors]
-            lines.append(f"  {node.id}: {node.type.name} -> {succs}")
+            lines.append(f"  [{node.id}] {node.type.name:12} {node.label!r:35} → {succs}")
         return "\n".join(lines)
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Builder
+# ──────────────────────────────────────────────────────────────────────────────
+
 class CFGBuilder:
     """
-    Construye el CFG a partir del AST.
+    Construye el CFG a partir de un Module del parser.
 
     Uso:
-        builder = CFGBuilder()
-        cfg = builder.build(module)
+        cfg = CFGBuilder().build(module)
+
+    Invariante de retorno de _build_stmt / _build_stmts
+    -----------------------------------------------------
+    Cada método devuelve (first_node, last_node) o None si no generó nodos.
+    El caller conecta last_node con lo que venga después.
     """
 
     def __init__(self):
         self.cfg: Optional[CFG] = None
-        self._node_stack: List[CFGNode] = []
+
+    # ── Punto de entrada ──────────────────────────────────────────────────────
 
     def build(self, module: Module) -> CFG:
-        """Construye el CFG completo."""
-        self.cfg = CFG()
-        self.cfg.entry = self.cfg.new_node(CFGNodeType.ENTRY)
-        
-        current = self.cfg.entry
-        for stmt in module.body:
-            stmt_node = self._build_stmt(stmt)
-            if stmt_node:
-                self.cfg.add_edge(current, stmt_node)
-                current = stmt_node
-        
-        self.cfg.exit = self.cfg.new_node(CFGNodeType.EXIT)
-        if current != self.cfg.entry:
-            self.cfg.add_edge(current, self.cfg.exit)
-        else:
-            self.cfg.add_edge(self.cfg.entry, self.cfg.exit)
+        self.cfg        = CFG()
+        self.cfg.entry  = self.cfg.new_node(CFGNodeType.ENTRY, label="ENTRY")
+        self.cfg.exit   = self.cfg.new_node(CFGNodeType.EXIT,  label="EXIT")
 
+        last = self._chain(self.cfg.entry, module.body)
+        self.cfg.add_edge(last, self.cfg.exit)
         return self.cfg
 
-    def _build_stmt(self, stmt: ASTNode) -> Optional[CFGNode]:
-        """Convierte una sentencia a nodo(s) del CFG."""
-        if isinstance(stmt, AssignStatement):
-            return self._build_assign(stmt)
-        if isinstance(stmt, AugAssignStatement):
-            return self._build_augassign(stmt)
-        if isinstance(stmt, ExprStatement):
-            return self._build_expr_stmt(stmt)
-        if isinstance(stmt, IfStatement):
-            return self._build_if(stmt)
-        if isinstance(stmt, WhileStatement):
-            return self._build_while(stmt)
-        if isinstance(stmt, ForStatement):
-            return self._build_for(stmt)
-        if isinstance(stmt, FunctionDef):
-            return self._build_function(stmt)
-        if isinstance(stmt, ReturnStatement):
-            return self._build_return(stmt)
+    # ── Encadenado de listas de sentencias ───────────────────────────────────
+
+    def _chain(self, prev: CFGNode, stmts: List[ASTNode]) -> CFGNode:
+        """
+        Construye los nodos de `stmts` y los encadena secuencialmente
+        partiendo de `prev`. Devuelve el último nodo producido.
+        """
+        current = prev
+        for stmt in stmts:
+            result = self._build_stmt(stmt)
+            if result is None:
+                continue
+            first, last = result
+            self.cfg.add_edge(current, first)
+            current = last
+        return current
+
+    # ── Dispatch de sentencias ────────────────────────────────────────────────
+
+    def _build_stmt(self, stmt: ASTNode
+                    ) -> Optional[Tuple[CFGNode, CFGNode]]:
+        if isinstance(stmt, AssignStatement):    return self._build_assign(stmt)
+        if isinstance(stmt, AugAssignStatement): return self._build_augassign(stmt)
+        if isinstance(stmt, ExprStatement):      return self._build_expr_stmt(stmt)
+        if isinstance(stmt, IfStatement):        return self._build_if(stmt)
+        if isinstance(stmt, WhileStatement):     return self._build_while(stmt)
+        if isinstance(stmt, ForStatement):       return self._build_for(stmt)
+        if isinstance(stmt, FunctionDef):        return self._build_function(stmt)
+        if isinstance(stmt, ReturnStatement):    return self._build_return(stmt)
+        if isinstance(stmt, ImportStatement):    return self._build_import(stmt)
         return None
 
-    def _build_assign(self, stmt: AssignStatement) -> CFGNode:
-        target_name = self._get_name_from_target(stmt.targets[0]) if stmt.targets else "?"
-        label = f"{target_name} = <expr>"
-        return self.cfg.new_node(
-            CFGNodeType.ASSIGN,
-            ast_node=stmt,
-            label=label,
-        )
+    # ── Sentencias simples ────────────────────────────────────────────────────
 
-    def _build_augassign(self, stmt: AugAssignStatement) -> CFGNode:
-        target_name = self._get_target_name(stmt.target)
-        label = f"{target_name} {stmt.op}= <expr>"
-        return self.cfg.new_node(
-            CFGNodeType.ASSIGN,
-            ast_node=stmt,
-            label=label,
-        )
+    def _build_assign(self, stmt: AssignStatement):
+        t = self._target_label(stmt.targets[0]) if stmt.targets else "?"
+        v = self._expr_label(stmt.value)
+        n = self.cfg.new_node(CFGNodeType.ASSIGN, stmt, f"{t} = {v}")
+        return n, n
 
-    def _build_expr_stmt(self, stmt: ExprStatement) -> CFGNode:
-        label = "<expression>"
-        return self.cfg.new_node(
-            CFGNodeType.CALL,
-            ast_node=stmt,
-            label=label,
-        )
+    def _build_augassign(self, stmt: AugAssignStatement):
+        t = self._name_of(stmt.target)
+        v = self._expr_label(stmt.value)
+        n = self.cfg.new_node(CFGNodeType.ASSIGN, stmt, f"{t} {stmt.op} {v}")
+        return n, n
 
-    def _build_if(self, stmt: IfStatement) -> CFGNode:
-        """Construye CFG para if-elif-else."""
-        cond_node = self.cfg.new_node(
-            CFGNodeType.CONDITION,
-            ast_node=stmt,
-            label="if <cond>",
-        )
-        
-        then_nodes = []
-        for s in stmt.then_body:
-            s_node = self._build_stmt(s)
-            if s_node:
-                then_nodes.append(s_node)
-        
-        else_nodes = []
-        for s in stmt.else_body:
-            s_node = self._build_stmt(s)
-            if s_node:
-                else_nodes.append(s_node)
-        
-        for elif_clause in stmt.elif_clauses:
-            elif_node = self.cfg.new_node(
-                CFGNodeType.CONDITION,
-                ast_node=elif_clause,
-                label="elif <cond>",
-            )
-            for s in elif_clause.body:
-                s_node = self._build_stmt(s)
-                if s_node:
-                    elif_node.successors.append(s_node)
-                    s_node.predecessors.append(elif_node)
+    def _build_expr_stmt(self, stmt: ExprStatement):
+        label = self._expr_label(stmt.expression) if stmt.expression else "<expr>"
+        n = self.cfg.new_node(CFGNodeType.CALL, stmt, label)
+        return n, n
 
-        return cond_node
+    def _build_return(self, stmt: ReturnStatement):
+        val = self._expr_label(stmt.value) if stmt.value else ""
+        n = self.cfg.new_node(CFGNodeType.RETURN, stmt, f"return {val}".strip())
+        self.cfg.add_edge(n, self.cfg.exit)
+        return n, n
 
-    def _build_while(self, stmt: WhileStatement) -> CFGNode:
-        loop_node = self.cfg.new_node(
-            CFGNodeType.WHILE,
-            ast_node=stmt,
-            label="while <cond>",
-        )
-        
-        body_nodes = []
-        for s in stmt.body:
-            s_node = self._build_stmt(s)
-            if s_node:
-                body_nodes.append(s_node)
-        
-        for body_node in body_nodes:
-            self.cfg.add_edge(body_node, loop_node)
+    def _build_import(self, stmt: ImportStatement):
+        label = f"from {stmt.module} import …" if stmt.is_from else f"import {stmt.module}"
+        n = self.cfg.new_node(CFGNodeType.IMPORT, stmt, label)
+        return n, n
 
-        return loop_node
+    # ── if / elif / else ──────────────────────────────────────────────────────
 
-    def _build_for(self, stmt: ForStatement) -> CFGNode:
-        target_name = self._get_target_name(stmt.target)
-        label = f"for {target_name} in <iter>"
-        return self.cfg.new_node(
-            CFGNodeType.FOR,
-            ast_node=stmt,
-            label=label,
-        )
+    def _build_if(self, stmt: IfStatement):
+        """
+        Estructura:
 
-    def _build_function(self, stmt: FunctionDef) -> Optional[CFGNode]:
-        func_node = self.cfg.new_node(
-            CFGNodeType.CALL,
-            ast_node=stmt,
-            label=f"def {stmt.name}",
-        )
-        
-        for s in stmt.body:
-            s_node = self._build_stmt(s)
-            if s_node:
-                self.cfg.add_edge(func_node, s_node)
+            CONDITION (if cond)
+            ├─ True  → [then_body] ──────────────┐
+            ├─ False → CONDITION (elif) → [body] ─┤ → MERGE
+            └─ False → [else_body] ───────────────┘
 
-        return func_node
+        El nodo MERGE es el "last" que el caller conecta con lo siguiente.
+        Si no hay else, el CONDITION también apunta directamente al MERGE
+        (rama False implícita).
+        """
+        cond_label = self._expr_label(stmt.condition)
+        cond = self.cfg.new_node(CFGNodeType.CONDITION, stmt, f"if {cond_label}")
+        merge = self.cfg.new_node(CFGNodeType.MERGE, label="merge")
 
-    def _build_return(self, stmt: ReturnStatement) -> CFGNode:
-        return self.cfg.new_node(
-            CFGNodeType.RETURN,
-            ast_node=stmt,
-            label="return",
-        )
+        # Rama True
+        last_then = self._chain(cond, stmt.then_body)
+        self.cfg.add_edge(last_then, merge)
 
-    def _get_name_from_target(self, node: ASTNode) -> str:
+        # Ramas elif
+        prev_false = cond
+        for ec in stmt.elif_clauses:
+            ec_label = self._expr_label(ec.condition)
+            ec_node = self.cfg.new_node(CFGNodeType.CONDITION, ec, f"elif {ec_label}")
+            self.cfg.add_edge(prev_false, ec_node)
+            last_elif = self._chain(ec_node, ec.body)
+            self.cfg.add_edge(last_elif, merge)
+            prev_false = ec_node
+
+        # Rama False / else
+        if stmt.else_body:
+            last_else = self._chain(prev_false, stmt.else_body)
+            self.cfg.add_edge(last_else, merge)
+        else:
+            # Sin else: la rama False salta directamente al merge
+            self.cfg.add_edge(prev_false, merge)
+
+        return cond, merge
+
+    # ── while ─────────────────────────────────────────────────────────────────
+
+    def _build_while(self, stmt: WhileStatement):
+        """
+            LOOP_HEAD (while cond)
+            ├─ True  → [body] → back-edge → LOOP_HEAD
+            └─ False → MERGE
+        """
+        cond_label = self._expr_label(stmt.condition)
+        head  = self.cfg.new_node(CFGNodeType.LOOP_HEAD, stmt, f"while {cond_label}")
+        merge = self.cfg.new_node(CFGNodeType.MERGE, label="while-exit")
+
+        last_body = self._chain(head, stmt.body)
+        self.cfg.add_edge(last_body, head)   # back-edge
+        self.cfg.add_edge(head, merge)       # exit edge (condition False)
+
+        return head, merge
+
+    # ── for ───────────────────────────────────────────────────────────────────
+
+    def _build_for(self, stmt: ForStatement):
+        """
+            LOOP_HEAD (for x in iter)
+            ├─ has items → [body] → back-edge → LOOP_HEAD
+            └─ exhausted → MERGE
+        """
+        tgt  = self._name_of(stmt.target)
+        iter_= self._expr_label(stmt.iter)
+        head  = self.cfg.new_node(CFGNodeType.LOOP_HEAD, stmt, f"for {tgt} in {iter_}")
+        merge = self.cfg.new_node(CFGNodeType.MERGE, label="for-exit")
+
+        last_body = self._chain(head, stmt.body)
+        self.cfg.add_edge(last_body, head)
+        self.cfg.add_edge(head, merge)
+
+        return head, merge
+
+    # ── def function ──────────────────────────────────────────────────────────
+
+    def _build_function(self, stmt: FunctionDef):
+        """
+        Crea un subgrafo completo para la función con su propio ENTRY/EXIT
+        y lo conecta al flujo del módulo como un nodo FUNC_DEF.
+
+        El nodo FUNC_DEF representa la *definición* (no la llamada).
+        El cuerpo se encadena internamente.
+        """
+        func_entry = self.cfg.new_node(CFGNodeType.FUNC_DEF, stmt,
+                                       f"def {stmt.name}(…)")
+        func_exit  = self.cfg.new_node(CFGNodeType.MERGE, label=f"end {stmt.name}")
+
+        last_body = self._chain(func_entry, stmt.body)
+        self.cfg.add_edge(last_body, func_exit)
+
+        return func_entry, func_exit
+
+    # ── Helpers de etiquetas ──────────────────────────────────────────────────
+
+    def _expr_label(self, node: Optional[ASTNode], max_len: int = 40) -> str:
+        if node is None:
+            return ""
+        label = self._expr_label_full(node)
+        return label if len(label) <= max_len else label[:max_len - 1] + "…"
+
+    def _expr_label_full(self, node: ASTNode) -> str:
+        from ast_nodes import (Literal, Name, BinaryOp, UnaryOp, BoolOp,
+                                Compare, FCall, Attribute, Subscript,
+                                JoinedStr, FormattedValue, PercentFormat,
+                                Tuple, PyList, Keyword)
+        if isinstance(node, Literal):
+            return repr(node.value)
         if isinstance(node, Name):
             return node.name
         if isinstance(node, Attribute):
-            obj = self._get_name_from_target(node.obj)
-            return f"{obj}.{node.attr}"
-        return "?"
+            return f"{self._expr_label_full(node.obj)}.{node.attr}"
+        if isinstance(node, Subscript):
+            return f"{self._expr_label_full(node.obj)}[…]"
+        if isinstance(node, BinaryOp):
+            return (f"{self._expr_label_full(node.left)} "
+                    f"{node.op} "
+                    f"{self._expr_label_full(node.right)}")
+        if isinstance(node, UnaryOp):
+            return f"{node.op}{self._expr_label_full(node.operand)}"
+        if isinstance(node, BoolOp):
+            parts = [self._expr_label_full(v) for v in node.values]
+            return f" {node.op} ".join(parts)
+        if isinstance(node, Compare):
+            left = self._expr_label_full(node.left)
+            parts = [f"{op} {self._expr_label_full(c)}"
+                     for op, c in zip(node.ops, node.comparators)]
+            return f"{left} {' '.join(parts)}"
+        if isinstance(node, FCall):
+            func = self._expr_label_full(node.func)
+            args = ", ".join(self._expr_label_full(a) for a in node.args)
+            return f"{func}({args})"
+        if isinstance(node, JoinedStr):
+            return "f\"...\""
+        if isinstance(node, PercentFormat):
+            return f"{self._expr_label_full(node.left)} % …"
+        if isinstance(node, Tuple):
+            elems = ", ".join(self._expr_label_full(e) for e in node.elements)
+            return f"({elems})"
+        return "<expr>"
 
-    def _get_target_name(self, node: ASTNode) -> str:
-        return self._get_name_from_target(node)
+    def _target_label(self, node: ASTNode) -> str:
+        return self._name_of(node)
+
+    def _name_of(self, node: ASTNode) -> str:
+        from ast_nodes import Name, Attribute, Subscript
+        if isinstance(node, Name):      return node.name
+        if isinstance(node, Attribute): return f"{self._name_of(node.obj)}.{node.attr}"
+        if isinstance(node, Subscript): return f"{self._name_of(node.obj)}[…]"
+        return "?"
