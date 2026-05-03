@@ -1,6 +1,4 @@
 .vscode
-Proyecto/output/ast/
-Proyecto/output/cfg/
-Proyecto/output/dfg/
+
 venv/
 __pycache__/
