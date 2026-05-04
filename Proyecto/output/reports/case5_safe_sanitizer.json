@@ -1,0 +1,57 @@
+{
+  "schema_version": "1.0",
+  "engine": "1.0.0",
+  "file": "case5_safe_sanitizer.py",
+  "filepath": "/home/alexowo/UNSA/Compiladores/Proyecto/samples/case5_safe_sanitizer.py",
+  "timestamp": "2026-05-04 04:00:12 UTC",
+  "loc": 6,
+  "verdict": "SAFE",
+  "summary": {
+    "total": 0,
+    "critical": 0,
+    "warning": 0,
+    "info": 0
+  },
+  "vulnerabilities": [],
+  "safe_sinks": [
+    {
+      "sink": "cursor.execute",
+      "line": 6,
+      "sanitizer": "int",
+      "variable": "safe_id"
+    },
+    {
+      "sink": "cursor.execute",
+      "line": 6,
+      "sanitizer": "int",
+      "variable": "safe_id"
+    }
+  ],
+  "sanitizations": [
+    {
+      "function": "int",
+      "variable": "safe_id",
+      "line": 0
+    }
+  ],
+  "statistics": {
+    "cfg": {
+      "total_nodes": 9,
+      "conditions": 0,
+      "assignments": 2,
+      "calls": 1,
+      "merges": 1
+    },
+    "dfg": {
+      "total_nodes": 12,
+      "total_edges": 11,
+      "sources": 0,
+      "sinks": 1,
+      "operators": 1,
+      "constants": 1,
+      "variables": 6,
+      "taint_hops": 1
+    },
+    "analysis_time_ms": 21.567081999819493
+  }
+}
