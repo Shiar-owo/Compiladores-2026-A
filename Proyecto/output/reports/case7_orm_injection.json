@@ -2,8 +2,8 @@
   "schema_version": "1.0",
   "engine": "1.0.0",
   "file": "case7_orm_injection.py",
-  "filepath": "/home/alexowo/UNSA/Compiladores/Proyecto/samples/case7_orm_injection.py",
-  "timestamp": "2026-05-04 04:00:14 UTC",
+  "filepath": "/app/samples/case7_orm_injection.py",
+  "timestamp": "2026-05-04 19:12:31 UTC",
   "loc": 16,
   "verdict": "SAFE",
   "summary": {
@@ -33,6 +33,6 @@
       "variables": 11,
       "taint_hops": 11
     },
-    "analysis_time_ms": 31.888702000287594
+    "analysis_time_ms": 46.231112000896246
   }
 }

@@ -2,8 +2,8 @@
   "schema_version": "1.0",
   "engine": "1.0.0",
   "file": "case11_enterprise_app.py",
-  "filepath": "/home/alexowo/UNSA/Compiladores/Proyecto/samples/case11_enterprise_app.py",
-  "timestamp": "2026-05-04 04:00:57 UTC",
+  "filepath": "/app/samples/case11_enterprise_app.py",
+  "timestamp": "2026-05-04 19:13:02 UTC",
   "loc": 50,
   "verdict": "VULNERABLE",
   "summary": {
@@ -120,6 +120,6 @@
       "variables": 37,
       "taint_hops": 33
     },
-    "analysis_time_ms": 198.65372800086334
+    "analysis_time_ms": 213.27231699979166
   }
 }

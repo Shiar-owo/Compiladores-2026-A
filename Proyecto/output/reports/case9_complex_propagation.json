@@ -2,8 +2,8 @@
   "schema_version": "1.0",
   "engine": "1.0.0",
   "file": "case9_complex_propagation.py",
-  "filepath": "/home/alexowo/UNSA/Compiladores/Proyecto/samples/case9_complex_propagation.py",
-  "timestamp": "2026-05-04 04:00:33 UTC",
+  "filepath": "/app/samples/case9_complex_propagation.py",
+  "timestamp": "2026-05-04 19:12:45 UTC",
   "loc": 27,
   "verdict": "VULNERABLE",
   "summary": {
@@ -103,6 +103,6 @@
       "variables": 26,
       "taint_hops": 24
     },
-    "analysis_time_ms": 81.75712799857138
+    "analysis_time_ms": 92.05498799929046
   }
 }
