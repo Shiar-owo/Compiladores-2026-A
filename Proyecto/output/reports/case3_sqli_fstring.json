@@ -3,7 +3,7 @@
   "engine": "1.0.0",
   "file": "case3_sqli_fstring.py",
   "filepath": "/app/samples/case3_sqli_fstring.py",
-  "timestamp": "2026-05-04 19:12:25 UTC",
+  "timestamp": "2026-05-21 23:26:35 UTC",
   "loc": 5,
   "verdict": "SAFE",
   "summary": {
@@ -33,6 +33,6 @@
       "variables": 5,
       "taint_hops": 5
     },
-    "analysis_time_ms": 29.18723499897169
+    "analysis_time_ms": 29.93941100066877
   }
 }

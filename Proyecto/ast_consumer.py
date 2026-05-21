@@ -72,7 +72,22 @@ class ASTConsumer:
         condition = self._convert_expr(node.test)
         then_body = [self._convert_stmt(s) for s in node.body]
         elif_clauses: List[ElifClause] = []
-        else_body = [self._convert_stmt(s) for s in node.orelse]
+        else_body: List[ASTNode] = []
+
+        # Extract elif chains from orelse
+        current_orelse = node.orelse
+        while len(current_orelse) == 1 and isinstance(current_orelse[0], ast.If):
+            elif_node = current_orelse[0]
+            elif_condition = self._convert_expr(elif_node.test)
+            elif_body = [self._convert_stmt(s) for s in elif_node.body]
+            elif_clauses.append(ElifClause(
+                condition=elif_condition, body=elif_body,
+                line=elif_node.lineno, col=elif_node.col_offset,
+            ))
+            current_orelse = elif_node.orelse
+
+        # Remaining orelse is the else body
+        else_body = [self._convert_stmt(s) for s in current_orelse]
 
         return IfStatement(
             condition=condition,
@@ -91,7 +106,7 @@ class ASTConsumer:
     def _convert_For(self, node: ast.For) -> ForStatement:
         target = self._convert_expr(node.target)
         iter_ = self._convert_expr(node.iter)
-        body = [self._convert_expr(s) for s in node.body]
+        body = [self._convert_stmt(s) for s in node.body]
         return ForStatement(target=target, iter=iter_, body=body, line=node.lineno, col=node.col_offset)
 
     def _convert_FunctionDef(self, node: ast.FunctionDef) -> FunctionDef:
@@ -144,13 +159,6 @@ class ASTConsumer:
         kind = self._infer_kind(node.value)
         return Literal(value=node.value, kind=kind, line=node.lineno, col=node.col_offset)
 
-    def _convert_Num(self, node: ast.Num) -> Literal:
-        kind = "int" if isinstance(node.n, int) else "float"
-        return Literal(value=node.n, kind=kind, line=node.lineno, col=node.col_offset)
-
-    def _convert_Str(self, node: ast.Str) -> Literal:
-        return Literal(value=node.s, kind="str", line=node.lineno, col=node.col_offset)
-
     def _convert_Name(self, node: ast.Name) -> Name:
         return Name(name=node.id, line=node.lineno, col=node.col_offset)
 
@@ -158,6 +166,8 @@ class ASTConsumer:
         left = self._convert_expr(node.left)
         op = self._translate_op(node.op)
         right = self._convert_expr(node.right)
+        if op == "%":
+            return PercentFormat(left=left, right=right, line=node.lineno, col=node.col_offset)
         return BinaryOp(left=left, op=op, right=right, line=node.lineno, col=node.col_offset)
 
     def _convert_UnaryOp(self, node: ast.UnaryOp) -> UnaryOp:
@@ -204,14 +214,6 @@ class ASTConsumer:
         if node.conversion is not None and node.conversion >= 0:
             conversion = {0: "s", 1: "r", 2: "a"}.get(node.conversion)
         return FormattedValue(value=value, conversion=conversion, line=node.lineno, col=node.col_offset)
-
-    def _convert_BinOp(self, node: ast.BinOp) -> BinaryOp:
-        left = self._convert_expr(node.left)
-        op = self._translate_op(node.op)
-        right = self._convert_expr(node.right)
-        if op == "%":
-            return PercentFormat(left=left, right=right, line=node.lineno, col=node.col_offset)
-        return BinaryOp(left=left, op=op, right=right, line=node.lineno, col=node.col_offset)
 
     def _convert_Tuple(self, node: ast.Tuple) -> Tuple:
         elements = [self._convert_expr(e) for e in node.elts]

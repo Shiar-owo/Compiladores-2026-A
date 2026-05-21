@@ -3,7 +3,7 @@
   "engine": "1.0.0",
   "file": "case11_enterprise_app.py",
   "filepath": "/app/samples/case11_enterprise_app.py",
-  "timestamp": "2026-05-04 19:13:02 UTC",
+  "timestamp": "2026-05-21 23:27:15 UTC",
   "loc": 50,
   "verdict": "VULNERABLE",
   "summary": {
@@ -120,6 +120,6 @@
       "variables": 37,
       "taint_hops": 33
     },
-    "analysis_time_ms": 213.27231699979166
+    "analysis_time_ms": 223.20326000044588
   }
 }

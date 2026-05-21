@@ -340,6 +340,7 @@ def assemble_report(
 
     # ── Safe sinks ────────────────────────────────────────────────────────────
     safe_sinks: List[SafeSink] = []
+    seen_sinks: set[tuple] = set()
     if result.sanitizations:
         for sym in st.get_all_symbols():
             if sym.sanitizer:
@@ -347,12 +348,14 @@ def assemble_report(
                     stripped = line.strip()
                     base = stripped.split("(")[0].strip().rsplit(".", 1)[-1]
                     if st.is_sink(base):
-                        safe_sinks.append(SafeSink(
-                            sink=stripped.split("(")[0].strip(),
-                            line=line_no,
-                            sanitizer=sym.sanitizer,
-                            variable=sym.name,
-                        ))
+                        key = (stripped.split("(")[0].strip(), line_no,
+                               sym.sanitizer, sym.name)
+                        if key not in seen_sinks:
+                            seen_sinks.add(key)
+                            safe_sinks.append(SafeSink(
+                                sink=key[0], line=key[1],
+                                sanitizer=key[2], variable=key[3],
+                            ))
                         break
 
     # ── Sanitization records ──────────────────────────────────────────────────

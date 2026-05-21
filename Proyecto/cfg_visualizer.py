@@ -60,7 +60,7 @@ def _esc(t: str) -> str:
 
 def _trunc(s: str, n: int = 38) -> str:
     s = str(s)
-    return s if len(s) <= n else s[:n-1] + "…"
+    return s if len(s) <= n else s[:n-3] + "..."
 
 def _node_label(node: CFGNode) -> str:
     tp = node.type.name

@@ -105,7 +105,7 @@ def _esc(text: str) -> str:
 
 def _trunc(value: str, n: int = 28) -> str:
     s = str(value)
-    return s if len(s) <= n else s[:n - 1] + "…"
+    return s if len(s) <= n else s[:n - 3] + "..."
 
 
 def _scalar_attrs(node: ASTNode) -> list[tuple[str, str]]:
@@ -119,7 +119,7 @@ def _scalar_attrs(node: ASTNode) -> list[tuple[str, str]]:
             continue
         if v is None or v == [] or v == "":
             continue
-        result.append((k, _trunc(_esc(repr(v)))))
+        result.append((k, _esc(_trunc(repr(v)))))
     return result
 
 
@@ -544,29 +544,36 @@ class ASTVisualizer:
     # ── Configuración del grafo de AST ────────────────────────────────────────
 
     def _configure_graph(self, g: graphviz.Digraph, caption: str):
-        # Extraer número de figura y título del caption
         fig_num = ""
         fig_title = ""
         if caption:
             parts = caption.split(". ", 1)
             if len(parts) > 1:
-                fig_num = parts[0]  # "Figure 1"
-                fig_title = parts[1]  # "AST for Case..."
+                fig_num = parts[0]
+                fig_title = parts[1]
+            else:
+                fig_title = caption
 
-        # Crear caption formal con número de figura y título
         caption_label = ""
-        if caption:
+        if fig_num or fig_title:
+            rows = ""
+            if fig_num:
+                rows += (
+                    f'<TR><TD ALIGN="CENTER">'
+                    f'<FONT FACE="{_FONT_TITLE}" POINT-SIZE="12" COLOR="#1a1a1a">'
+                    f'<B>{_esc(fig_num)}</B></FONT>'
+                    f'</TD></TR>'
+                )
+            if fig_title:
+                rows += (
+                    f'<TR><TD ALIGN="CENTER">'
+                    f'<FONT FACE="{_FONT_TITLE}" POINT-SIZE="11" COLOR="#333333">'
+                    f'<I>{_esc(fig_title)}</I></FONT>'
+                    f'</TD></TR>'
+                )
             caption_label = (
                 f'<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="0">'
-                f'<TR><TD ALIGN="CENTER">'
-                f'<FONT FACE="{_FONT_TITLE}" POINT-SIZE="12" COLOR="#1a1a1a">'
-                f'<B>{fig_num}</B></FONT>'
-                f'</TD></TR>'
-                f'<TR><TD ALIGN="CENTER">'
-                f'<FONT FACE="{_FONT_TITLE}" POINT-SIZE="11" COLOR="#333333">'
-                f'<I>{_esc(fig_title)}</I></FONT>'
-                f'</TD></TR>'
-                f'</TABLE>>'
+                f'{rows}</TABLE>>'
             )
 
         g.attr(

@@ -139,6 +139,7 @@ class CFGBuilder:
 
     def __init__(self):
         self.cfg: Optional[CFG] = None
+        self._func_exit: Optional[CFGNode] = None
 
     # ── Punto de entrada ──────────────────────────────────────────────────────
 
@@ -205,7 +206,10 @@ class CFGBuilder:
     def _build_return(self, stmt: ReturnStatement):
         val = self._expr_label(stmt.value) if stmt.value else ""
         n = self.cfg.new_node(CFGNodeType.RETURN, stmt, f"return {val}".strip())
-        self.cfg.add_edge(n, self.cfg.exit)
+        if self._func_exit is not None:
+            self.cfg.add_edge(n, self._func_exit)
+        else:
+            self.cfg.add_edge(n, self.cfg.exit)
         return n, n
 
     def _build_import(self, stmt: ImportStatement):
@@ -307,8 +311,15 @@ class CFGBuilder:
                                        f"def {stmt.name}(…)")
         func_exit  = self.cfg.new_node(CFGNodeType.MERGE, label=f"end {stmt.name}")
 
+        # Save previous func_exit (handles nested functions)
+        prev_func_exit = self._func_exit
+        self._func_exit = func_exit
+
         last_body = self._chain(func_entry, stmt.body)
         self.cfg.add_edge(last_body, func_exit)
+
+        # Restore previous func_exit
+        self._func_exit = prev_func_exit
 
         return func_entry, func_exit
 

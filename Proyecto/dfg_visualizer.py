@@ -51,7 +51,7 @@ def _esc(t: str) -> str:
 
 def _trunc(s: str, n: int = 32) -> str:
     s = str(s)
-    return s if len(s) <= n else s[:n-1] + "…"
+    return s if len(s) <= n else s[:n-3] + "..."
 
 def _display_name(node: DFGNode) -> str:
     """Nombre legible para mostrar en el nodo (limpia prefijos internos)."""

@@ -367,6 +367,16 @@ class TaintPropagationEngine:
         for s in stmt.body:
             self._analyze_stmt(s, dfg, child_st, result)
 
+        # Merge tainted symbols from child back into parent so Phase C
+        # sink detection can see them
+        for sym in child_st.get_all_symbols():
+            if sym.taint_status in (TaintStatus.TAINTED, TaintStatus.PARAM):
+                if not st.is_tainted(sym.name):
+                    st.mark_tainted(sym.name, source=sym.sources[0] if sym.sources else "function_param",
+                                    line=sym.line, col=sym.col)
+            if sym.taint_status == TaintStatus.SANITIZED and sym.sanitizer:
+                st.mark_sanitized(sym.name, sym.sanitizer)
+
     # ─────────────────────────────────────────────────────────────────────────
     # Phase B — DFG BFS propagation
     # ─────────────────────────────────────────────────────────────────────────
