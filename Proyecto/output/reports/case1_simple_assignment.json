@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "engine": "1.0.0",
+  "file": "case1_simple_assignment.py",
+  "filepath": "/app/samples/case1_simple_assignment.py",
+  "timestamp": "2026-05-04 19:12:23 UTC",
+  "loc": 3,
+  "verdict": "SAFE (no SQL sink)",
+  "summary": {
+    "total": 0,
+    "critical": 0,
+    "warning": 0,
+    "info": 0
+  },
+  "vulnerabilities": [],
+  "safe_sinks": [],
+  "sanitizations": [],
+  "statistics": {
+    "cfg": {
+      "total_nodes": 5,
+      "conditions": 0,
+      "assignments": 2,
+      "calls": 1,
+      "merges": 0
+    },
+    "dfg": {
+      "total_nodes": 6,
+      "total_edges": 4,
+      "sources": 0,
+      "sinks": 0,
+      "operators": 0,
+      "constants": 2,
+      "variables": 3,
+      "taint_hops": 0
+    },
+    "analysis_time_ms": 22.563606999028707
+  }
+}

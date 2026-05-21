@@ -1,0 +1,70 @@
+{
+  "schema_version": "1.0",
+  "engine": "1.0.0",
+  "file": "case4_sqli_printf.py",
+  "filepath": "/app/samples/case4_sqli_printf.py",
+  "timestamp": "2026-05-04 19:12:27 UTC",
+  "loc": 3,
+  "verdict": "VULNERABLE",
+  "summary": {
+    "total": 1,
+    "critical": 1,
+    "warning": 0,
+    "info": 0
+  },
+  "vulnerabilities": [
+    {
+      "id": "CVE-SL-002",
+      "severity": "CRITICAL",
+      "cwe": "CWE-89",
+      "sink": "db.execute",
+      "sink_line": 3,
+      "sink_col": 0,
+      "sink_expr": "db.execute(sql)",
+      "arg": "sql",
+      "source_var": "sql",
+      "source_type": "HTTP_ARGS",
+      "mechanism": "direct assignment from HTTP request",
+      "taint_path": [
+        {
+          "step": 1,
+          "role": "SOURCE",
+          "line": 2,
+          "col": 0,
+          "expr": "sql = \"SELECT id FROM accounts WHERE login = '%s'\" % username"
+        },
+        {
+          "step": 2,
+          "role": "SINK",
+          "line": 3,
+          "col": 0,
+          "expr": "db.execute(sql)"
+        }
+      ],
+      "remediation": "Use a parameterized query. Never interpolate HTTP parameters directly into SQL:",
+      "remediation_code": "name = request.args.get(\"name\")\nquery = \"SELECT * FROM users WHERE name = %s\"\ncursor.execute(query, (name,))"
+    }
+  ],
+  "safe_sinks": [],
+  "sanitizations": [],
+  "statistics": {
+    "cfg": {
+      "total_nodes": 5,
+      "conditions": 0,
+      "assignments": 2,
+      "calls": 1,
+      "merges": 0
+    },
+    "dfg": {
+      "total_nodes": 12,
+      "total_edges": 11,
+      "sources": 3,
+      "sinks": 1,
+      "operators": 1,
+      "constants": 2,
+      "variables": 5,
+      "taint_hops": 5
+    },
+    "analysis_time_ms": 14.058980999834603
+  }
+}

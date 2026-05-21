@@ -1,0 +1,108 @@
+{
+  "schema_version": "1.0",
+  "engine": "1.0.0",
+  "file": "case10_dynamic_columns.py",
+  "filepath": "/app/samples/case10_dynamic_columns.py",
+  "timestamp": "2026-05-04 19:12:53 UTC",
+  "loc": 25,
+  "verdict": "VULNERABLE",
+  "summary": {
+    "total": 2,
+    "critical": 2,
+    "warning": 0,
+    "info": 0
+  },
+  "vulnerabilities": [
+    {
+      "id": "CVE-SL-002",
+      "severity": "CRITICAL",
+      "cwe": "CWE-89",
+      "sink": "cursor.execute",
+      "sink_line": 33,
+      "sink_col": 0,
+      "sink_expr": "cursor.execute(sql)",
+      "arg": "sql",
+      "source_var": "sql",
+      "source_type": "STDIN",
+      "mechanism": "direct assignment from stdin",
+      "taint_path": [
+        {
+          "step": 1,
+          "role": "SOURCE",
+          "line": 10,
+          "col": 0,
+          "expr": "sql = \"SELECT \" + column_name + \" FROM \" + table_name + \" WHERE \" + column_name + \" = '\" + value + \"'\""
+        },
+        {
+          "step": 2,
+          "role": "SINK",
+          "line": 33,
+          "col": 0,
+          "expr": "cursor.execute(sql)"
+        }
+      ],
+      "remediation": "Use a parameterized query and validate the input type. If the value must be an integer, cast it with int():",
+      "remediation_code": "user_id = int(input(\"ID: \"))\nquery = \"SELECT * FROM users WHERE id = ?\"\ncursor.execute(query, (user_id,))"
+    },
+    {
+      "id": "CVE-SL-003",
+      "severity": "CRITICAL",
+      "cwe": "CWE-89",
+      "sink": "cursor.execute",
+      "sink_line": 34,
+      "sink_col": 0,
+      "sink_expr": "cursor.execute(base_sql)",
+      "arg": "base_sql",
+      "source_var": "table_name",
+      "source_type": "STDIN",
+      "mechanism": "direct assignment from stdin",
+      "taint_path": [
+        {
+          "step": 1,
+          "role": "SOURCE",
+          "line": 6,
+          "col": 0,
+          "expr": "table_name = input(\"Enter table name: \")"
+        },
+        {
+          "step": 2,
+          "role": "ASSIGN",
+          "line": 18,
+          "col": 0,
+          "expr": "base_sql += \" AND category = '\" + category + \"'\""
+        },
+        {
+          "step": 3,
+          "role": "SINK",
+          "line": 34,
+          "col": 0,
+          "expr": "cursor.execute(base_sql)"
+        }
+      ],
+      "remediation": "Use a parameterized query and validate the input type. If the value must be an integer, cast it with int():",
+      "remediation_code": "user_id = int(input(\"ID: \"))\nquery = \"SELECT * FROM users WHERE id = ?\"\ncursor.execute(query, (user_id,))"
+    }
+  ],
+  "safe_sinks": [],
+  "sanitizations": [],
+  "statistics": {
+    "cfg": {
+      "total_nodes": 20,
+      "conditions": 0,
+      "assignments": 13,
+      "calls": 5,
+      "merges": 0
+    },
+    "dfg": {
+      "total_nodes": 63,
+      "total_edges": 65,
+      "sources": 7,
+      "sinks": 2,
+      "operators": 15,
+      "constants": 18,
+      "variables": 18,
+      "taint_hops": 17
+    },
+    "analysis_time_ms": 105.20329900100478
+  }
+}

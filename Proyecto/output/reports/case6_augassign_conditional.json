@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.0",
+  "engine": "1.0.0",
+  "file": "case6_augassign_conditional.py",
+  "filepath": "/app/samples/case6_augassign_conditional.py",
+  "timestamp": "2026-05-04 19:12:30 UTC",
+  "loc": 4,
+  "verdict": "VULNERABLE",
+  "summary": {
+    "total": 1,
+    "critical": 0,
+    "warning": 1,
+    "info": 0
+  },
+  "vulnerabilities": [
+    {
+      "id": "CVE-SL-002",
+      "severity": "WARNING",
+      "cwe": "CWE-89",
+      "sink": "db.execute",
+      "sink_line": 4,
+      "sink_col": 0,
+      "sink_expr": "db.execute(base_query)",
+      "arg": "base_query",
+      "source_var": "user_filter",
+      "source_type": "EXTERNAL",
+      "mechanism": "data flow propagation",
+      "taint_path": [
+        {
+          "step": 1,
+          "role": "SOURCE",
+          "line": 2,
+          "col": 3,
+          "expr": "if user_filter:"
+        },
+        {
+          "step": 2,
+          "role": "ASSIGN",
+          "line": 3,
+          "col": 4,
+          "expr": "base_query += \" AND user = '\" + user_input + \"'\""
+        },
+        {
+          "step": 3,
+          "role": "SINK",
+          "line": 4,
+          "col": 0,
+          "expr": "db.execute(base_query)"
+        }
+      ],
+      "remediation": "Identify the data source and use a parameterized query. Never concatenate external data into SQL strings:",
+      "remediation_code": "# Replace string building with a parameterized query:\ncursor.execute(\"SELECT * FROM t WHERE col = %s\", (external_value,))"
+    }
+  ],
+  "safe_sinks": [],
+  "sanitizations": [],
+  "statistics": {
+    "cfg": {
+      "total_nodes": 7,
+      "conditions": 1,
+      "assignments": 2,
+      "calls": 1,
+      "merges": 1
+    },
+    "dfg": {
+      "total_nodes": 13,
+      "total_edges": 11,
+      "sources": 0,
+      "sinks": 1,
+      "operators": 3,
+      "constants": 3,
+      "variables": 6,
+      "taint_hops": 3
+    },
+    "analysis_time_ms": 14.174043000821257
+  }
+}

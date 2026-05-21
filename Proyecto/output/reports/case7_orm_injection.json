@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "engine": "1.0.0",
+  "file": "case7_orm_injection.py",
+  "filepath": "/app/samples/case7_orm_injection.py",
+  "timestamp": "2026-05-04 19:12:31 UTC",
+  "loc": 16,
+  "verdict": "SAFE",
+  "summary": {
+    "total": 0,
+    "critical": 0,
+    "warning": 0,
+    "info": 0
+  },
+  "vulnerabilities": [],
+  "safe_sinks": [],
+  "sanitizations": [],
+  "statistics": {
+    "cfg": {
+      "total_nodes": 11,
+      "conditions": 0,
+      "assignments": 6,
+      "calls": 3,
+      "merges": 0
+    },
+    "dfg": {
+      "total_nodes": 23,
+      "total_edges": 21,
+      "sources": 3,
+      "sinks": 1,
+      "operators": 1,
+      "constants": 4,
+      "variables": 11,
+      "taint_hops": 11
+    },
+    "analysis_time_ms": 46.231112000896246
+  }
+}

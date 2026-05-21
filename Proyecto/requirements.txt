@@ -3,3 +3,4 @@ graphviz
 ipython
 astviz
 rich
+reportlab
