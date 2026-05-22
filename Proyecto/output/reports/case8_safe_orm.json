@@ -2,8 +2,8 @@
   "schema_version": "1.0",
   "engine": "1.0.0",
   "file": "case8_safe_orm.py",
-  "filepath": "/app/samples/case8_safe_orm.py",
-  "timestamp": "2026-05-21 23:26:44 UTC",
+  "filepath": "/home/alexowo/UNSA/Compiladores/Proyecto/samples/case8_safe_orm.py",
+  "timestamp": "2026-05-22 00:31:32 UTC",
   "loc": 55,
   "verdict": "SAFE (no SQL sink)",
   "summary": {
@@ -68,6 +68,6 @@
       "variables": 31,
       "taint_hops": 30
     },
-    "analysis_time_ms": 169.5242940004391
+    "analysis_time_ms": 92.3725699994975
   }
 }

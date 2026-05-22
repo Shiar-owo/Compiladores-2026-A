@@ -2,8 +2,8 @@
   "schema_version": "1.0",
   "engine": "1.0.0",
   "file": "case5_safe_sanitizer.py",
-  "filepath": "/app/samples/case5_safe_sanitizer.py",
-  "timestamp": "2026-05-21 23:26:38 UTC",
+  "filepath": "/home/alexowo/UNSA/Compiladores/Proyecto/samples/case5_safe_sanitizer.py",
+  "timestamp": "2026-05-22 00:31:26 UTC",
   "loc": 6,
   "verdict": "SAFE",
   "summary": {
@@ -46,6 +46,6 @@
       "variables": 6,
       "taint_hops": 1
     },
-    "analysis_time_ms": 30.100621999736177
+    "analysis_time_ms": 17.738481999913347
   }
 }

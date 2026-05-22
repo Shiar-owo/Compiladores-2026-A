@@ -2,80 +2,17 @@
   "schema_version": "1.0",
   "engine": "1.0.0",
   "file": "case11_enterprise_app.py",
-  "filepath": "/app/samples/case11_enterprise_app.py",
-  "timestamp": "2026-05-21 23:27:15 UTC",
+  "filepath": "/home/alexowo/UNSA/Compiladores/Proyecto/samples/case11_enterprise_app.py",
+  "timestamp": "2026-05-22 00:32:06 UTC",
   "loc": 50,
-  "verdict": "VULNERABLE",
+  "verdict": "SAFE",
   "summary": {
-    "total": 2,
+    "total": 0,
     "critical": 0,
-    "warning": 2,
+    "warning": 0,
     "info": 0
   },
-  "vulnerabilities": [
-    {
-      "id": "CVE-SL-002",
-      "severity": "WARNING",
-      "cwe": "CWE-89",
-      "sink": "cursor.execute",
-      "sink_line": 71,
-      "sink_col": 0,
-      "sink_expr": "cursor.execute(query, params)",
-      "arg": "params",
-      "source_var": "params",
-      "source_type": "EXTERNAL",
-      "mechanism": "data flow propagation",
-      "taint_path": [
-        {
-          "step": 1,
-          "role": "SOURCE",
-          "line": 41,
-          "col": 4,
-          "expr": "params = (col, table, col, safe_value)"
-        },
-        {
-          "step": 2,
-          "role": "SINK",
-          "line": 71,
-          "col": 0,
-          "expr": "cursor.execute(query, params)"
-        }
-      ],
-      "remediation": "Identify the data source and use a parameterized query. Never concatenate external data into SQL strings:",
-      "remediation_code": "# Replace string building with a parameterized query:\ncursor.execute(\"SELECT * FROM t WHERE col = %s\", (external_value,))"
-    },
-    {
-      "id": "CVE-SL-003",
-      "severity": "WARNING",
-      "cwe": "CWE-89",
-      "sink": "cursor.execute",
-      "sink_line": 72,
-      "sink_col": 0,
-      "sink_expr": "cursor.execute(query2, params2)",
-      "arg": "params2",
-      "source_var": "params2",
-      "source_type": "EXTERNAL",
-      "mechanism": "data flow propagation",
-      "taint_path": [
-        {
-          "step": 1,
-          "role": "SOURCE",
-          "line": 49,
-          "col": 4,
-          "expr": "params2 = (safe_category,)"
-        },
-        {
-          "step": 2,
-          "role": "SINK",
-          "line": 72,
-          "col": 0,
-          "expr": "cursor.execute(query2, params2)"
-        }
-      ],
-      "remediation": "Identify the data source and use a parameterized query. Never concatenate external data into SQL strings:",
-      "remediation_code": "# Replace string building with a parameterized query:\ncursor.execute(\"SELECT * FROM t WHERE col = %s\", (external_value,))"
-    }
-  ],
+  "vulnerabilities": [],
   "safe_sinks": [
     {
       "sink": "cursor.execute",
@@ -120,6 +57,6 @@
       "variables": 37,
       "taint_hops": 33
     },
-    "analysis_time_ms": 223.20326000044588
+    "analysis_time_ms": 133.3413760003168
   }
 }

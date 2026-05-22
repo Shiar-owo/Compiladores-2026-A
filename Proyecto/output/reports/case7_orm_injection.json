@@ -2,17 +2,49 @@
   "schema_version": "1.0",
   "engine": "1.0.0",
   "file": "case7_orm_injection.py",
-  "filepath": "/app/samples/case7_orm_injection.py",
-  "timestamp": "2026-05-21 23:26:41 UTC",
+  "filepath": "/home/alexowo/UNSA/Compiladores/Proyecto/samples/case7_orm_injection.py",
+  "timestamp": "2026-05-22 00:31:29 UTC",
   "loc": 16,
-  "verdict": "SAFE",
+  "verdict": "VULNERABLE",
   "summary": {
-    "total": 0,
-    "critical": 0,
+    "total": 1,
+    "critical": 1,
     "warning": 0,
     "info": 0
   },
-  "vulnerabilities": [],
+  "vulnerabilities": [
+    {
+      "id": "CVE-SL-002",
+      "severity": "CRITICAL",
+      "cwe": "CWE-89",
+      "sink": "cursor.execute",
+      "sink_line": 21,
+      "sink_col": 9,
+      "sink_expr": "result = cursor.execute(query)",
+      "arg": "query",
+      "source_var": "query",
+      "source_type": "STDIN",
+      "mechanism": "direct assignment from stdin",
+      "taint_path": [
+        {
+          "step": 1,
+          "role": "SOURCE",
+          "line": 9,
+          "col": 0,
+          "expr": "query = f\"SELECT * FROM users WHERE username = '{username}' LIMIT {limit}\""
+        },
+        {
+          "step": 2,
+          "role": "SINK",
+          "line": 21,
+          "col": 9,
+          "expr": "result = cursor.execute(query)"
+        }
+      ],
+      "remediation": "Use a parameterized query and validate the input type. If the value must be an integer, cast it with int():",
+      "remediation_code": "user_id = int(input(\"ID: \"))\nquery = \"SELECT * FROM users WHERE id = ?\"\ncursor.execute(query, (user_id,))"
+    }
+  ],
   "safe_sinks": [],
   "sanitizations": [],
   "statistics": {
@@ -33,6 +65,6 @@
       "variables": 11,
       "taint_hops": 11
     },
-    "analysis_time_ms": 31.924818999868876
+    "analysis_time_ms": 61.494915000366746
   }
 }

@@ -194,6 +194,8 @@ class TaintPropagationEngine:
     def __init__(self):
         # IDs de nodos DFG que están tainted (propagación interna)
         self._tainted_node_ids: Set[int] = set()
+        # Cache child symbol tables from Phase A for Phase C sink detection
+        self._func_tables: Dict[str, SymbolTable] = {}
 
     # ─────────────────────────────────────────────────────────────────────────
     # Punto de entrada
@@ -212,6 +214,7 @@ class TaintPropagationEngine:
         y vulnerabilidades detectadas.
         """
         self._tainted_node_ids = set()
+        self._func_tables = {}
         result = TaintPropagationResult()
 
         # ── Phase A: AST pass ─────────────────────────────────────────────────
@@ -346,6 +349,9 @@ class TaintPropagationEngine:
         """
         child_st = st.create_child()
         child_st.set_scope(stmt.name)
+
+        # Cache this child table so Phase C can use it for sink detection
+        self._func_tables[stmt.name] = child_st
 
         # Registrar la firma en la tabla padre
         sig = st.define_function(stmt.name)
@@ -512,6 +518,9 @@ class TaintPropagationEngine:
         """Recorre el AST buscando sinks con argumentos tainted."""
         if isinstance(stmt, ExprStatement) and stmt.expression:
             self._check_sink_expr(stmt.expression, st, result)
+        elif isinstance(stmt, AssignStatement) and stmt.value:
+            # Sink can be the value of an assignment: result = cursor.execute(...)
+            self._check_sink_expr(stmt.value, st, result)
         elif isinstance(stmt, IfStatement):
             for s in stmt.then_body: self._detect_sinks(s, st, result)
             for s in stmt.else_body: self._detect_sinks(s, st, result)
@@ -522,12 +531,19 @@ class TaintPropagationEngine:
         elif isinstance(stmt, ForStatement):
             for s in stmt.body: self._detect_sinks(s, st, result)
         elif isinstance(stmt, FunctionDef):
-            child_st = st.create_child() if st.get_function(stmt.name) else st
+            # Use the cached child table from Phase A (has actual taint info)
+            child_st = self._func_tables.get(stmt.name)
+            if child_st is None:
+                child_st = st.create_child() if st.get_function(stmt.name) else st
             for s in stmt.body: self._detect_sinks(s, child_st, result)
 
     def _check_sink_expr(self, expr: ASTNode, st: SymbolTable,
                          result: TaintPropagationResult):
-        """Si expr es un FCall a un sink con args tainted → registrar vuln."""
+        """Si expr es un FCall a un sink con args tainted → registrar vuln.
+
+        Only the first argument (position 0, the SQL string) is checked.
+        Arguments at position 1+ are parameterized query values and are safe.
+        """
         if not isinstance(expr, FCall):
             return
 
@@ -535,25 +551,29 @@ class TaintPropagationEngine:
         if not st.is_sink(func_name):
             return
 
-        for arg in expr.args:
-            arg_tainted = self._is_tainted_expr(arg, st)
-            if arg_tainted:
-                arg_name = self._var_name(arg) or "<expr>"
-                sym      = st.get(arg_name) if arg_name != "<expr>" else None
-                path     = ([arg_name] + (sym.sources if sym else [])
-                            if sym else [arg_name])
-                stype    = (TaintSource[sym.sources[0].upper()]
-                            if sym and sym.sources and
-                            sym.sources[0].upper() in TaintSource.__members__
-                            else TaintSource.UNKNOWN)
-                result.add_vulnerability(Vulnerability(
-                    sink       = func_name,
-                    arg_name   = arg_name,
-                    taint_path = path,
-                    source_type= stype,
-                    line       = expr.line,
-                    col        = expr.col,
-                ))
+        # Only check position 0 (the SQL query string).
+        # Position 1+ are parameterized query parameters — safe by design.
+        if not expr.args:
+            return
+        arg = expr.args[0]
+        arg_tainted = self._is_tainted_expr(arg, st)
+        if arg_tainted:
+            arg_name = self._var_name(arg) or "<expr>"
+            sym      = st.get(arg_name) if arg_name != "<expr>" else None
+            path     = ([arg_name] + (sym.sources if sym else [])
+                        if sym else [arg_name])
+            stype    = (TaintSource[sym.sources[0].upper()]
+                        if sym and sym.sources and
+                        sym.sources[0].upper() in TaintSource.__members__
+                        else TaintSource.UNKNOWN)
+            result.add_vulnerability(Vulnerability(
+                sink       = func_name,
+                arg_name   = arg_name,
+                taint_path = path,
+                source_type= stype,
+                line       = expr.line,
+                col        = expr.col,
+            ))
 
     # ─────────────────────────────────────────────────────────────────────────
     # Helpers — expresiones

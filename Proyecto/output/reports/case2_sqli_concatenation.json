@@ -2,8 +2,8 @@
   "schema_version": "1.0",
   "engine": "1.0.0",
   "file": "case2_sqli_concatenation.py",
-  "filepath": "/app/samples/case2_sqli_concatenation.py",
-  "timestamp": "2026-05-21 23:26:33 UTC",
+  "filepath": "/home/alexowo/UNSA/Compiladores/Proyecto/samples/case2_sqli_concatenation.py",
+  "timestamp": "2026-05-22 00:31:23 UTC",
   "loc": 3,
   "verdict": "VULNERABLE",
   "summary": {
@@ -65,6 +65,6 @@
       "variables": 4,
       "taint_hops": 3
     },
-    "analysis_time_ms": 16.339338000761927
+    "analysis_time_ms": 13.323010000021895
   }
 }
