@@ -574,6 +574,278 @@ def build_pdf(report: PDFReport, output_path: str):
     doc.build(story)
 
 
+def generate_metrics_pdf(output_dir: str = None, console=None) -> bool:
+    """
+    Generate a standalone PDF report for accuracy metrics.
+    Reads output/metrics.json and produces output/pdf/metrics_report.pdf.
+    """
+    if output_dir is None:
+        output_dir = PDF_OUTPUT_DIR
+    os.makedirs(output_dir, exist_ok=True)
+
+    metrics_path = os.path.join(os.path.dirname(__file__), "output", "metrics.json")
+    if not os.path.isfile(metrics_path):
+        if console:
+            console.print("[yellow]⚠ No metrics.json found — skipping metrics PDF[/yellow]")
+        return False
+
+    try:
+        with open(metrics_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as e:
+        if console:
+            console.print(f"[red]✗ Could not read metrics.json: {e}[/red]")
+        return False
+
+    agg = data.get("aggregate_metrics", {})
+    cases = data.get("cases", [])
+    timestamp = data.get("timestamp", "")
+
+    pdf_path = os.path.join(output_dir, "metrics_report.pdf")
+    doc = SimpleDocTemplate(
+        pdf_path,
+        pagesize=LETTER,
+        rightMargin=0.75*inch,
+        leftMargin=0.75*inch,
+        topMargin=0.75*inch,
+        bottomMargin=0.75*inch,
+    )
+
+    styles = getSampleStyleSheet()
+    story = []
+
+    title_style = ParagraphStyle(
+        "CustomTitle",
+        parent=styles["Heading1"],
+        fontSize=24,
+        textColor=colors.HexColor("#1a1a2e"),
+        spaceAfter=30,
+        alignment=TA_CENTER,
+    )
+
+    section_style = ParagraphStyle(
+        "SectionHeading",
+        parent=styles["Heading2"],
+        fontSize=14,
+        textColor=colors.white,
+        spaceBefore=20,
+        spaceAfter=10,
+        backgroundColor=colors.HexColor("#2c3e50"),
+        leftPadding=8,
+    )
+
+    subsection_style = ParagraphStyle(
+        "SubsectionHeading",
+        parent=styles["Heading3"],
+        fontSize=12,
+        textColor=colors.HexColor("#2c3e50"),
+        spaceBefore=12,
+        spaceAfter=6,
+    )
+
+    body_style = ParagraphStyle(
+        "BodyText",
+        parent=styles["Normal"],
+        fontSize=10,
+        leading=14,
+        spaceAfter=6,
+    )
+
+    # ── Cover page ────────────────────────────────────────────────────────────
+    story.append(Spacer(1, 1.5*inch))
+    story.append(Paragraph("Accuracy Metrics Report", title_style))
+    story.append(Spacer(1, 10))
+    story.append(Paragraph(
+        "Security Linter — False Positive / False Negative Analysis",
+        ParagraphStyle("Subtitle", parent=title_style, fontSize=14,
+                       textColor=colors.HexColor("#555555"), spaceAfter=40),
+    ))
+    story.append(Spacer(1, 20))
+
+    meta_data = [
+        ["Generated", timestamp],
+        ["Total Cases", str(agg.get("total_cases", 0))],
+        ["True Positives", str(agg.get("true_positives", 0))],
+        ["True Negatives", str(agg.get("true_negatives", 0))],
+        ["False Positives", str(agg.get("false_positives", 0))],
+        ["False Negatives", str(agg.get("false_negatives", 0))],
+    ]
+    meta_table = Table(meta_data, colWidths=[1.8*inch, 4.2*inch])
+    meta_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#ecf0f1")),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTNAME", (1, 0), (1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.append(meta_table)
+
+    # ── §1 Confusion Matrix ───────────────────────────────────────────────────
+    story.append(PageBreak())
+    story.append(Paragraph("§1  Confusion Matrix", section_style))
+    story.append(Spacer(1, 10))
+    story.append(Paragraph(
+        "Comparison of linter output against ground truth defined in "
+        "<code>samples/ground_truth.json</code>.",
+        body_style,
+    ))
+    story.append(Spacer(1, 12))
+
+    tp = agg.get("true_positives", 0)
+    tn = agg.get("true_negatives", 0)
+    fp = agg.get("false_positives", 0)
+    fn = agg.get("false_negatives", 0)
+
+    confusion_data = [
+        ["", "Actually Vulnerable", "Actually Safe"],
+        ["Reported VULNERABLE", f"True Positive: {tp}", f"False Positive: {fp}"],
+        ["Reported SAFE", f"False Negative: {fn}", f"True Negative: {tn}"],
+    ]
+    confusion_table = Table(confusion_data, colWidths=[1.5*inch, 2.2*inch, 2.2*inch])
+    confusion_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#ecf0f1")),
+        ("FONTNAME", (0, 1), (0, -1), "Helvetica-Bold"),
+        ("FONTNAME", (1, 1), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    story.append(confusion_table)
+
+    # ── §2 Aggregate Metrics ──────────────────────────────────────────────────
+    story.append(Spacer(1, 20))
+    story.append(Paragraph("§2  Aggregate Metrics", section_style))
+    story.append(Spacer(1, 10))
+
+    prec = agg.get("precision", 0)
+    rec = agg.get("recall", 0)
+    f1 = agg.get("f1_score", 0)
+    fpr = agg.get("false_positive_rate", 0)
+    fnr = agg.get("false_negative_rate", 0)
+    acc = agg.get("accuracy", 0)
+
+    metrics_data = [
+        ["Metric", "Value"],
+        ["Precision", f"{prec:.1%}"],
+        ["Recall", f"{rec:.1%}"],
+        ["F1 Score", f"{f1:.1%}"],
+        ["False Positive Rate", f"{fpr:.1%}"],
+        ["False Negative Rate", f"{fnr:.1%}"],
+        ["Accuracy", f"{acc:.1%}"],
+    ]
+    metrics_table = Table(metrics_data, colWidths=[2.5*inch, 3.5*inch])
+    metrics_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("BACKGROUND", (0, 1), (0, -1), colors.HexColor("#ecf0f1")),
+        ("FONTNAME", (0, 1), (0, -1), "Helvetica-Bold"),
+        ("FONTNAME", (1, 1), (1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.append(metrics_table)
+
+    # ── §3 Per-Case Results ───────────────────────────────────────────────────
+    story.append(PageBreak())
+    story.append(Paragraph("§3  Per-Case Results", section_style))
+    story.append(Spacer(1, 10))
+
+    case_data = [["Case", "Expected", "Actual", "TP", "FP", "FN", "Result"]]
+    for cr in cases:
+        case_name = cr.get("case", "").replace(".py", "").replace("case", "C")
+        exp = "VULN" if "VULNERABLE" in cr.get("expected_verdict", "") else "SAFE"
+        act = "VULN" if "VULNERABLE" in cr.get("actual_verdict", "") else "SAFE"
+        cls = cr.get("classification", "")
+        case_data.append([
+            case_name, exp, act,
+            str(cr.get("true_positives", 0)),
+            str(cr.get("false_positives", 0)),
+            str(cr.get("false_negatives", 0)),
+            cls,
+        ])
+
+    case_table = Table(case_data, colWidths=[1.8*inch, 0.7*inch, 0.7*inch, 0.5*inch, 0.5*inch, 0.5*inch, 0.8*inch])
+    case_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (1, 1), (-1, -1), "CENTER"),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f5f5f5")]),
+    ]))
+    for i, cr in enumerate(cases):
+        row_idx = i + 1
+        cls = cr.get("classification", "")
+        if cls in ("TP", "TN"):
+            case_table.setStyle(TableStyle([
+                ("TEXTCOLOR", (6, row_idx), (6, row_idx), colors.Color(0.2, 0.6, 0.3)),
+                ("FONTNAME", (6, row_idx), (6, row_idx), "Helvetica-Bold"),
+            ]))
+        else:
+            case_table.setStyle(TableStyle([
+                ("TEXTCOLOR", (6, row_idx), (6, row_idx), colors.Color(0.85, 0.2, 0.2)),
+                ("FONTNAME", (6, row_idx), (6, row_idx), "Helvetica-Bold"),
+            ]))
+    story.append(case_table)
+
+    # ── §4 False Positive / Negative Details ──────────────────────────────────
+    has_details = False
+    for cr in cases:
+        if cr.get("fp_details") or cr.get("fn_details"):
+            has_details = True
+            break
+
+    if has_details:
+        story.append(Spacer(1, 20))
+        story.append(Paragraph("§4  Error Details", section_style))
+        story.append(Spacer(1, 10))
+
+        for cr in cases:
+            fp_d = cr.get("fp_details", [])
+            fn_d = cr.get("fn_details", [])
+            if not fp_d and not fn_d:
+                continue
+
+            case_name = cr.get("case", "").replace(".py", "")
+            story.append(Paragraph(f"<b>{case_name}</b>", subsection_style))
+
+            for detail in fp_d:
+                story.append(Paragraph(
+                    f'<font color="red">[FP]</font> {detail}',
+                    ParagraphStyle("Detail", parent=body_style, fontSize=9),
+                ))
+            for detail in fn_d:
+                story.append(Paragraph(
+                    f'<font color="red">[FN]</font> {detail}',
+                    ParagraphStyle("Detail", parent=body_style, fontSize=9),
+                ))
+            story.append(Spacer(1, 4))
+
+    doc.build(story)
+
+    if console:
+        console.print(f"  [green]✓[/green] metrics_report.pdf")
+    return True
+
+
 def generate_all_pdfs(
     reports_dir: str = None,
     output_dir: str = None,

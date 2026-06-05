@@ -2,8 +2,8 @@
   "schema_version": "1.0",
   "engine": "1.0.0",
   "file": "case10_dynamic_columns.py",
-  "filepath": "/home/alexowo/UNSA/Compiladores/Proyecto/samples/case10_dynamic_columns.py",
-  "timestamp": "2026-05-22 00:31:55 UTC",
+  "filepath": "/app/samples/case10_dynamic_columns.py",
+  "timestamp": "2026-05-22 17:49:43 UTC",
   "loc": 25,
   "verdict": "VULNERABLE",
   "summary": {
@@ -103,6 +103,6 @@
       "variables": 18,
       "taint_hops": 17
     },
-    "analysis_time_ms": 65.40873599988117
+    "analysis_time_ms": 97.08666400001675
   }
 }

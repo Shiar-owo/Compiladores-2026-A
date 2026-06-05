@@ -486,6 +486,7 @@ def render_json_report(aggregate: AggregateMetrics):
             "false_positive_rate": round(aggregate.false_positive_rate, 4),
             "false_negative_rate": round(aggregate.false_negative_rate, 4),
             "accuracy": round(aggregate.accuracy, 4),
+            "total_cases": len(aggregate.case_results),
         },
     }
 

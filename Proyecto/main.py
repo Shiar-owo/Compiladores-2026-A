@@ -50,7 +50,8 @@ from dfg_visualizer  import DFGVisualizer
 from symbol_table    import SymbolTable
 from taint_engine    import TaintPropagationEngine
 from report_generator import generate_report
-from pdf_report_generator import generate_all_pdfs
+from pdf_report_generator import generate_all_pdfs, generate_metrics_pdf
+from test_metrics import run_all_cases, render_terminal_report, render_json_report
 
 con = Console()
 
@@ -256,6 +257,33 @@ def main():
     con.print(f"  [green]✓[/green] Generated {pdf_count} PDF reports")
     con.print(f"  PDF     → [cyan]{os.path.relpath(os.path.join(BASE_DIR, 'output', 'pdf'), BASE_DIR)}/[/cyan]")
     con.print()
+
+    # ── §8 Accuracy Metrics ───────────────────────────────────────────────────
+    gt_path = os.path.join(SAMPLES_DIR, "ground_truth.json")
+    if os.path.isfile(gt_path):
+        con.print(Rule("[bold white]§8  Accuracy Metrics[/bold white]", style="dim white"))
+        con.print()
+        aggregate = run_all_cases()
+        if aggregate.case_results:
+            render_terminal_report(aggregate)
+            render_json_report(aggregate)
+
+            # Generate standalone metrics PDF
+            generate_metrics_pdf(console=con)
+
+            con.print()
+            if aggregate.false_positives == 0 and aggregate.false_negatives == 0:
+                con.print("  [green]✓ All cases passed — no false positives or false negatives.[/green]\n")
+            else:
+                con.print(
+                    f"  [bold red]✗ {aggregate.false_positives} FP, "
+                    f"{aggregate.false_negatives} FN detected.[/bold red]\n"
+                )
+        else:
+            con.print("  [dim]No cases analyzed for metrics.[/dim]\n")
+    else:
+        con.print("  [dim]Skipping metrics (ground_truth.json not found).[/dim]\n")
+
     con.print("  [dim]Phase 2 complete with all reports.[/dim]")
     con.print()
 
