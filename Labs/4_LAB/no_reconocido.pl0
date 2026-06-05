@@ -1,0 +1,9 @@
+program Condicional ; 
+var numero, anio : integer;
+
+begin 
+  if odd(numero) && 1 = 1? then
+    numero = numero % 10
+    anio = 2026
+  end;
+end.
