@@ -1,0 +1,62 @@
+{
+  "schema_version": "1.0",
+  "engine": "1.0.0",
+  "file": "case11_enterprise_app.py",
+  "filepath": "/app/samples/case11_enterprise_app.py",
+  "timestamp": "2026-05-22 17:49:51 UTC",
+  "loc": 50,
+  "verdict": "SAFE",
+  "summary": {
+    "total": 0,
+    "critical": 0,
+    "warning": 0,
+    "info": 0
+  },
+  "vulnerabilities": [],
+  "safe_sinks": [
+    {
+      "sink": "cursor.execute",
+      "line": 71,
+      "sanitizer": "int",
+      "variable": "safe_new"
+    },
+    {
+      "sink": "cursor.execute",
+      "line": 71,
+      "sanitizer": "int",
+      "variable": "safe_cond"
+    }
+  ],
+  "sanitizations": [
+    {
+      "function": "int",
+      "variable": "safe_new",
+      "line": 0
+    },
+    {
+      "function": "int",
+      "variable": "safe_cond",
+      "line": 0
+    }
+  ],
+  "statistics": {
+    "cfg": {
+      "total_nodes": 45,
+      "conditions": 2,
+      "assignments": 23,
+      "calls": 6,
+      "merges": 5
+    },
+    "dfg": {
+      "total_nodes": 86,
+      "total_edges": 90,
+      "sources": 7,
+      "sinks": 3,
+      "operators": 5,
+      "constants": 14,
+      "variables": 37,
+      "taint_hops": 33
+    },
+    "analysis_time_ms": 88.06476400002339
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "schema_version": "1.0",
+  "engine": "1.0.0",
+  "file": "case7_orm_injection.py",
+  "filepath": "/app/samples/case7_orm_injection.py",
+  "timestamp": "2026-05-22 17:49:20 UTC",
+  "loc": 16,
+  "verdict": "VULNERABLE",
+  "summary": {
+    "total": 1,
+    "critical": 1,
+    "warning": 0,
+    "info": 0
+  },
+  "vulnerabilities": [
+    {
+      "id": "CVE-SL-002",
+      "severity": "CRITICAL",
+      "cwe": "CWE-89",
+      "sink": "cursor.execute",
+      "sink_line": 21,
+      "sink_col": 9,
+      "sink_expr": "result = cursor.execute(query)",
+      "arg": "query",
+      "source_var": "query",
+      "source_type": "STDIN",
+      "mechanism": "direct assignment from stdin",
+      "taint_path": [
+        {
+          "step": 1,
+          "role": "SOURCE",
+          "line": 9,
+          "col": 0,
+          "expr": "query = f\"SELECT * FROM users WHERE username = '{username}' LIMIT {limit}\""
+        },
+        {
+          "step": 2,
+          "role": "SINK",
+          "line": 21,
+          "col": 9,
+          "expr": "result = cursor.execute(query)"
+        }
+      ],
+      "remediation": "Use a parameterized query and validate the input type. If the value must be an integer, cast it with int():",
+      "remediation_code": "user_id = int(input(\"ID: \"))\nquery = \"SELECT * FROM users WHERE id = ?\"\ncursor.execute(query, (user_id,))"
+    }
+  ],
+  "safe_sinks": [],
+  "sanitizations": [],
+  "statistics": {
+    "cfg": {
+      "total_nodes": 11,
+      "conditions": 0,
+      "assignments": 6,
+      "calls": 3,
+      "merges": 0
+    },
+    "dfg": {
+      "total_nodes": 23,
+      "total_edges": 21,
+      "sources": 3,
+      "sinks": 1,
+      "operators": 1,
+      "constants": 4,
+      "variables": 11,
+      "taint_hops": 11
+    },
+    "analysis_time_ms": 25.04561199998534
+  }
+}

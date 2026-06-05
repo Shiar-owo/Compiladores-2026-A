@@ -1,0 +1,70 @@
+{
+  "schema_version": "1.0",
+  "engine": "1.0.0",
+  "file": "case2_sqli_concatenation.py",
+  "filepath": "/app/samples/case2_sqli_concatenation.py",
+  "timestamp": "2026-05-22 17:49:14 UTC",
+  "loc": 3,
+  "verdict": "VULNERABLE",
+  "summary": {
+    "total": 1,
+    "critical": 1,
+    "warning": 0,
+    "info": 0
+  },
+  "vulnerabilities": [
+    {
+      "id": "CVE-SL-002",
+      "severity": "CRITICAL",
+      "cwe": "CWE-89",
+      "sink": "cursor.execute",
+      "sink_line": 3,
+      "sink_col": 0,
+      "sink_expr": "cursor.execute(query)",
+      "arg": "query",
+      "source_var": "query",
+      "source_type": "STDIN",
+      "mechanism": "direct assignment from stdin",
+      "taint_path": [
+        {
+          "step": 1,
+          "role": "SOURCE",
+          "line": 2,
+          "col": 0,
+          "expr": "query = \"SELECT * FROM users WHERE id = \" + user_id"
+        },
+        {
+          "step": 2,
+          "role": "SINK",
+          "line": 3,
+          "col": 0,
+          "expr": "cursor.execute(query)"
+        }
+      ],
+      "remediation": "Use a parameterized query and validate the input type. If the value must be an integer, cast it with int():",
+      "remediation_code": "user_id = int(input(\"ID: \"))\nquery = \"SELECT * FROM users WHERE id = ?\"\ncursor.execute(query, (user_id,))"
+    }
+  ],
+  "safe_sinks": [],
+  "sanitizations": [],
+  "statistics": {
+    "cfg": {
+      "total_nodes": 5,
+      "conditions": 0,
+      "assignments": 2,
+      "calls": 1,
+      "merges": 0
+    },
+    "dfg": {
+      "total_nodes": 10,
+      "total_edges": 9,
+      "sources": 2,
+      "sinks": 1,
+      "operators": 1,
+      "constants": 2,
+      "variables": 4,
+      "taint_hops": 3
+    },
+    "analysis_time_ms": 19.224072999975306
+  }
+}

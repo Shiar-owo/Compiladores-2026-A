@@ -1,0 +1,149 @@
+{
+  "case1_simple_assignment.py": {
+    "description": "Simple assignment (no SQL)",
+    "expected_verdict": "SAFE",
+    "expected_vulns": 0,
+    "expected_vulnerabilities": [],
+    "notes": "No SQL sinks present. Pure safe code."
+  },
+  "case2_sqli_concatenation.py": {
+    "description": "SQLi via string concatenation",
+    "expected_verdict": "VULNERABLE",
+    "expected_vulns": 1,
+    "expected_vulnerabilities": [
+      {
+        "sink": "cursor.execute",
+        "line": 3,
+        "source_type": "INPUT",
+        "source_var": "user_id",
+        "notes": "input() → concatenation → execute(query)"
+      }
+    ],
+    "notes": "Classic SQLi: user input concatenated directly into SQL string."
+  },
+  "case3_sqli_fstring.py": {
+    "description": "SQLi via f-string (Flask)",
+    "expected_verdict": "VULNERABLE",
+    "expected_vulns": 1,
+    "expected_vulnerabilities": [
+      {
+        "sink": "cursor.execute",
+        "line": 6,
+        "source_type": "REQUEST_ARGS",
+        "source_var": "name",
+        "notes": "request.args.get() → f-string → execute(query)"
+      }
+    ],
+    "notes": "Flask request parameter interpolated via f-string into SQL."
+  },
+  "case4_sqli_printf.py": {
+    "description": "SQLi via printf-style % formatting",
+    "expected_verdict": "VULNERABLE",
+    "expected_vulns": 1,
+    "expected_vulnerabilities": [
+      {
+        "sink": "db.execute",
+        "line": 3,
+        "source_type": "REQUEST_FORM",
+        "source_var": "username",
+        "notes": "request.form.get() → %-format → execute(sql)"
+      }
+    ],
+    "notes": "HTTP form data injected via Python % string formatting."
+  },
+  "case5_safe_sanitizer.py": {
+    "description": "Safe path with int() sanitizer",
+    "expected_verdict": "SAFE",
+    "expected_vulns": 0,
+    "expected_vulnerabilities": [],
+    "notes": "int() converts tainted input to integer, breaking string taint chain. str(safe_id) produces a safe string."
+  },
+  "case6_augassign_conditional.py": {
+    "description": "Conditional SQLi via AugAssign",
+    "expected_verdict": "VULNERABLE",
+    "expected_vulns": 1,
+    "expected_vulnerabilities": [
+      {
+        "sink": "db.execute",
+        "line": 4,
+        "source_type": "UNKNOWN",
+        "source_var": "user_input",
+        "notes": "user_input (implicit external) → += concatenation → execute(base_query). Conditional path."
+      }
+    ],
+    "notes": "Taint enters via undefined variable user_input, propagates through augmented assignment."
+  },
+  "case7_orm_injection.py": {
+    "description": "ORM with raw SQL injection",
+    "expected_verdict": "VULNERABLE",
+    "expected_vulns": 1,
+    "expected_vulnerabilities": [
+      {
+        "sink": "cursor.execute",
+        "line": 21,
+        "source_type": "INPUT",
+        "source_var": "query",
+        "notes": "Two input() calls → f-string → execute(query)"
+      }
+    ],
+    "notes": "Two user inputs (username, limit) flow into f-string query."
+  },
+  "case8_safe_orm.py": {
+    "description": "Safe ORM with parameterized queries",
+    "expected_verdict": "SAFE",
+    "expected_vulns": 0,
+    "expected_vulnerabilities": [],
+    "notes": "Uses SQLAlchemy text() with parameter binding via dict. Tainted values (username, search_term, product_id) are passed as parameters (second argument to execute), NOT interpolated into the SQL string. The SQL string itself contains only placeholders (:username, :limit, :search, etc.)."
+  },
+  "case9_complex_propagation.py": {
+    "description": "Complex taint propagation",
+    "expected_verdict": "VULNERABLE",
+    "expected_vulns": 2,
+    "expected_vulnerabilities": [
+      {
+        "sink": "cursor.execute",
+        "line": 37,
+        "source_type": "INPUT",
+        "source_var": "user_input",
+        "notes": "input() → replace/strip (not sanitizers) → f-string → concatenation → execute(final_query). replace() and strip() are NOT SQL sanitizers."
+      },
+      {
+        "sink": "cursor.execute",
+        "line": 38,
+        "source_type": "INPUT",
+        "source_var": "email, bio",
+        "notes": "Multiple input() calls → concatenation → execute(query). username is partially sanitized (replace) but email and bio are fully tainted."
+      }
+    ],
+    "notes": "Taint flows through replace(), split(), join(), f-strings. replace() is NOT a SQL sanitizer."
+  },
+  "case10_dynamic_columns.py": {
+    "description": "Dynamic table/column names (SQLi)",
+    "expected_verdict": "VULNERABLE",
+    "expected_vulns": 2,
+    "expected_vulnerabilities": [
+      {
+        "sink": "cursor.execute",
+        "line": 33,
+        "source_type": "INPUT",
+        "source_var": "column_name, table_name, value",
+        "notes": "Three input() calls → string concatenation → execute(sql). Column, table, and value all tainted."
+      },
+      {
+        "sink": "cursor.execute",
+        "line": 34,
+        "source_type": "INPUT",
+        "source_var": "category, min_price, order_col",
+        "notes": "Three more input() calls → augmented assignment concatenation → execute(base_sql)."
+      }
+    ],
+    "notes": "Dynamic SQL construction with user-controlled table/column names."
+  },
+  "case11_enterprise_app.py": {
+    "description": "Enterprise app with validation (safe)",
+    "expected_verdict": "SAFE",
+    "expected_vulns": 0,
+    "expected_vulnerabilities": [],
+    "notes": "All queries use parameterized form (? placeholders). Input goes through sanitize_search_term() and int() before use. Table/column names validated against allowlists. Tainted values passed as parameters tuple (second arg to execute), not interpolated into SQL strings."
+  }
+}

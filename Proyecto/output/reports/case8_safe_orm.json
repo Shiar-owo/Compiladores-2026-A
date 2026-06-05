@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "engine": "1.0.0",
+  "file": "case8_safe_orm.py",
+  "filepath": "/app/samples/case8_safe_orm.py",
+  "timestamp": "2026-05-22 17:49:23 UTC",
+  "loc": 55,
+  "verdict": "SAFE (no SQL sink)",
+  "summary": {
+    "total": 0,
+    "critical": 0,
+    "warning": 0,
+    "info": 0
+  },
+  "vulnerabilities": [],
+  "safe_sinks": [
+    {
+      "sink": "result = conn.execute",
+      "line": 23,
+      "sanitizer": "int",
+      "variable": "limit"
+    },
+    {
+      "sink": "result = conn.execute",
+      "line": 23,
+      "sanitizer": "int",
+      "variable": "safe_id"
+    },
+    {
+      "sink": "result = conn.execute",
+      "line": 23,
+      "sanitizer": "int",
+      "variable": "user_id"
+    }
+  ],
+  "sanitizations": [
+    {
+      "function": "int",
+      "variable": "limit",
+      "line": 0
+    },
+    {
+      "function": "int",
+      "variable": "safe_id",
+      "line": 0
+    },
+    {
+      "function": "int",
+      "variable": "user_id",
+      "line": 0
+    }
+  ],
+  "statistics": {
+    "cfg": {
+      "total_nodes": 48,
+      "conditions": 3,
+      "assignments": 19,
+      "calls": 6,
+      "merges": 7
+    },
+    "dfg": {
+      "total_nodes": 76,
+      "total_edges": 67,
+      "sources": 8,
+      "sinks": 0,
+      "operators": 0,
+      "constants": 22,
+      "variables": 31,
+      "taint_hops": 30
+    },
+    "analysis_time_ms": 146.75721699995847
+  }
+}
