@@ -1,0 +1,102 @@
+==============================================
+       CONJUNTOS FIRST Y FOLLOW               
+==============================================
+
+>>> FIRST <<<
+FIRST(E) = { (, id }
+FIRST(E') = { +, e }
+FIRST(F) = { (, id }
+FIRST(T) = { (, id }
+FIRST(T') = { *, e }
+
+>>> FOLLOW <<<
+FOLLOW(E) = { $, ) }
+FOLLOW(E') = { $, ) }
+FOLLOW(F) = { $, ), *, + }
+FOLLOW(T) = { $, ), + }
+FOLLOW(T') = { $, ), + }
+
+==============================================
+       TABLA DE ANALISIS M                    
+==============================================
+
+NT     | id             | +              | *              | (              | )              | $             
+------------------------------------------------------------------------------------------------------------
+E      | E -> T E'      |                |                | E -> T E'      |                |               
+E'     |                | E' -> + T E'   |                |                | E' -> e        | E' -> e       
+T      | T -> F T'      |                |                | T -> F T'      |                |               
+T'     |                | T' -> e        | T' -> * F T'   |                | T' -> e        | T' -> e       
+F      | F -> id        |                |                | F -> ( E )     |                |               
+
+==============================================
+       ESTRUCTURA DE LA PILA                   
+==============================================
+
+La pila es una estructura LIFO (Last In, First Out).
+Se inicializa con: $ E (fondo = $, tope = E)
+Simbolos: terminales y no terminales de la gramatica.
+Algoritmo:
+  1. Sacar tope X de la pila.
+  2. Si X es terminal: comparar con entrada, si coincide avanzar.
+  3. Si X es no terminal: buscar M[X, a] y reemplazar X por la produccion.
+  4. Repetir hasta vaciar la pila o encontrar error.
+
+==============================================
+       CADENA 1: id+id*id$
+==============================================
+
+PILA                 | ENTRADA              | SALIDA
+--------------------------------------------------------------
+$E                   | id+id*id$            | 
+$E'T                 | id+id*id$            | E -> T E'
+$E'T'F               | id+id*id$            | T -> F T'
+$E'T'id              | id+id*id$            | F -> id
+$E'T'                | +id*id$              | 
+$E'                  | +id*id$              | T' -> e
+$E'T+                | +id*id$              | E' -> + T E'
+$E'T                 | id*id$               | 
+$E'T'F               | id*id$               | T -> F T'
+$E'T'id              | id*id$               | F -> id
+$E'T'                | *id$                 | 
+$E'T'F*              | *id$                 | T' -> * F T'
+$E'T'F               | id$                  | 
+$E'T'id              | id$                  | F -> id
+$E'T'                | $                    | 
+$E'                  | $                    | T' -> e
+$                    | $                    | E' -> e
+--------------------------------------------------------------
+RESULTADO: Cadena ACEPTADA
+
+==============================================
+       CADENA 2: (id+id)*id$
+==============================================
+
+PILA                 | ENTRADA              | SALIDA
+--------------------------------------------------------------
+$E                   | (id+id)*id$          | 
+$E'T                 | (id+id)*id$          | E -> T E'
+$E'T'F               | (id+id)*id$          | T -> F T'
+$E'T')E(             | (id+id)*id$          | F -> ( E )
+$E'T')E              | id+id)*id$           | 
+$E'T')E'T            | id+id)*id$           | E -> T E'
+$E'T')E'T'F          | id+id)*id$           | T -> F T'
+$E'T')E'T'id         | id+id)*id$           | F -> id
+$E'T')E'T'           | +id)*id$             | 
+$E'T')E'             | +id)*id$             | T' -> e
+$E'T')E'T+           | +id)*id$             | E' -> + T E'
+$E'T')E'T            | id)*id$              | 
+$E'T')E'T'F          | id)*id$              | T -> F T'
+$E'T')E'T'id         | id)*id$              | F -> id
+$E'T')E'T'           | )*id$                | 
+$E'T')E'             | )*id$                | T' -> e
+$E'T')               | )*id$                | E' -> e
+$E'T'                | *id$                 | 
+$E'T'F*              | *id$                 | T' -> * F T'
+$E'T'F               | id$                  | 
+$E'T'id              | id$                  | F -> id
+$E'T'                | $                    | 
+$E'                  | $                    | T' -> e
+$                    | $                    | E' -> e
+--------------------------------------------------------------
+RESULTADO: Cadena ACEPTADA
+
